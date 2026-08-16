@@ -49,6 +49,17 @@ class SignalConfig:
     volume_confirm_multiplier: float = 1.06  # entry volume must exceed N x 20d avg volume
     volume_lookback: int = 20
 
+    # Available but NOT yet wired into generate_signals() — computed and
+    # logged for research/backtesting, so any future signal change can be
+    # tuned and out-of-sample validated the same way volume_confirm_multiplier
+    # was, rather than bolted on live untested.
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    bbands_period: int = 20
+    bbands_std: float = 2.0
+    adx_period: int = 14
+
 
 @dataclass(frozen=True)
 class RiskConfig:
