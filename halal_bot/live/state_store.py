@@ -29,6 +29,7 @@ _lock = threading.Lock()
 @dataclass
 class LiveState:
     equity_peak: float = 0.0
+    previous_equity: float = 0.0  # last run's ending equity, for period-over-period % in the AI summary
     trading_paused: bool = False
     scaled_out_tickers: list[str] = field(default_factory=list)
     compliant_universe: list[str] = field(default_factory=list)

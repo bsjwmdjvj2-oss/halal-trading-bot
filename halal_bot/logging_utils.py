@@ -53,20 +53,37 @@ def log_trade(
     price: float,
     reason: str,
     portfolio_equity: float,
+    category: str = "",
+    pnl: float | None = None,
+    dry_run: bool = False,
 ) -> None:
     _write(
         "trades",
         {
             "ticker": ticker,
             "date": date,
-            "action": action,  # "buy" | "sell" | "stop_loss" | "scale_out"
+            "action": action,  # "buy" | "sell"
+            "category": category,  # "buy" | "stop_loss" | "scale_out" | "signal_exit" | "rebalance_trim"
             "shares": shares,
             "price": price,
             "notional": shares * price,
             "reason": reason,
             "portfolio_equity": portfolio_equity,
+            "pnl": pnl,  # realized P&L for sells; None for buys
+            "dry_run": dry_run,  # True if this was logged but no real order was submitted
         },
     )
+
+
+def log_equity_snapshot(date: str, equity: float, cash: float) -> None:
+    """Appends to a single cumulative file (not day-partitioned like the rest)
+    so the dashboard can read one continuous real equity curve over time."""
+    CONFIG.log_dir.mkdir(parents=True, exist_ok=True)
+    record = {"timestamp": datetime.now(timezone.utc).isoformat(), "date": date,
+              "equity": equity, "cash": cash}
+    with _lock:
+        with open(CONFIG.log_dir / "equity_history.jsonl", "a") as f:
+            f.write(json.dumps(record) + "\n")
 
 
 def log_screening(ticker: str, compliant: bool, reasons: list[str], data_gaps: list[str]) -> None:

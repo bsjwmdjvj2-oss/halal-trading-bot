@@ -118,8 +118,9 @@ to your **paper** account, per Section 13 of SPEC.md. Keep it on paper for
 - **Files tab** → `logs/signals_*.jsonl`, `logs/trades_*.jsonl`,
   `logs/screening_*.jsonl`, `logs/events_*.jsonl` — the full audit trail
   (SPEC.md Section 10).
-- **Telegram** → daily summary after each scheduled run, plus `/status`
-  on demand.
+- **Telegram** → daily summary after each scheduled run, plus `/status` and
+  `/dashboard` (P&L, win rate, drawdown, Sharpe) on demand. Tap the "/"
+  menu button in the chat to see all commands.
 
 ## Restart / outage safety
 

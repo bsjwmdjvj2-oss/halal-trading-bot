@@ -95,7 +95,7 @@ def build_application(portfolio_status_fn=None):
     """
     _require_config()
     portfolio_status_fn = portfolio_status_fn or default_status_fn
-    from telegram import Update
+    from telegram import BotCommand, Update
     from telegram.ext import Application, CommandHandler, ContextTypes
 
     def _authorized(update: Update) -> bool:
@@ -128,8 +128,32 @@ def build_application(portfolio_status_fn=None):
         TRADING_STATE.resume()
         await update.message.reply_text("▶️ Trading resumed.")
 
-    application = Application.builder().token(CONFIG.telegram.bot_token).build()
+    async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("[telegram] /dashboard received")
+        if not _authorized(update):
+            return
+        from halal_bot.dashboard.report import build_dashboard, render_text
+
+        await update.message.reply_text(render_text(build_dashboard()))
+
+    async def _register_command_menu(application: Application) -> None:
+        # Populates Telegram's native "/" menu button in the chat — otherwise
+        # commands only work if you already know and type them from memory.
+        await application.bot.set_my_commands([
+            BotCommand("status", "Portfolio status & open positions"),
+            BotCommand("dashboard", "P&L, win rate, drawdown, Sharpe"),
+            BotCommand("pause", "Stop opening new positions"),
+            BotCommand("resume", "Resume trading"),
+        ])
+
+    application = (
+        Application.builder()
+        .token(CONFIG.telegram.bot_token)
+        .post_init(_register_command_menu)
+        .build()
+    )
     application.add_handler(CommandHandler("status", status_cmd))
+    application.add_handler(CommandHandler("dashboard", dashboard_cmd))
     application.add_handler(CommandHandler("pause", pause_cmd))
     application.add_handler(CommandHandler("resume", resume_cmd))
     return application

@@ -20,7 +20,13 @@ from halal_bot.broker.alpaca_client import AccountSnapshot, AlpacaClient
 from halal_bot.config import CONFIG
 from halal_bot.data.prices import fetch_history
 from halal_bot.live.state_store import LiveState, load_state, save_state
-from halal_bot.logging_utils import log_event, log_screening, log_signal, log_trade
+from halal_bot.logging_utils import (
+    log_equity_snapshot,
+    log_event,
+    log_screening,
+    log_signal,
+    log_trade,
+)
 from halal_bot.portfolio import Position, PortfolioState
 from halal_bot.risk.rules import (
     can_open_new_position,
@@ -59,6 +65,7 @@ class DailyRunner:
     def __init__(self, live: bool = False):
         self.live = live
         self.messages: list[str] = []  # collected for the Telegram summary
+        self.trade_records: list[dict] = []  # structured, for the AI summary agent
 
     def _note(self, msg: str) -> None:
         self.messages.append(msg)
@@ -80,6 +87,11 @@ class DailyRunner:
         # Drop scale-out bookkeeping for anything we no longer actually hold
         # (e.g. a crash after order submit but before save_state last run).
         state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t in account.positions]
+
+        period_return_pct = (
+            (account.equity - state.previous_equity) / state.previous_equity * 100
+            if state.previous_equity > 0 else 0.0
+        )
 
         state.equity_peak = max(state.equity_peak, account.equity)
 
@@ -159,14 +171,17 @@ class DailyRunner:
             decision = check_exit_risk(pos, price)
 
             if decision.action == "stop_loss":
+                pnl = (price - pos.entry_price) * pos.shares
                 self._submit_and_log(client, ticker, "sell", pos.shares, price, decision.reason,
-                                      account.equity, category="stop_loss")
+                                      account.equity, category="stop_loss", pnl=pnl)
                 state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
                 continue
 
             if decision.action == "scale_out":
+                pnl = (price - pos.entry_price) * decision.shares
                 self._submit_and_log(client, ticker, "sell", decision.shares, price,
-                                      decision.reason, account.equity, category="scale_out")
+                                      decision.reason, account.equity, category="scale_out",
+                                      pnl=pnl)
                 if ticker not in state.scaled_out_tickers:
                     state.scaled_out_tickers.append(ticker)
 
@@ -175,9 +190,10 @@ class DailyRunner:
                     pos.shares - decision.shares
                 )
                 if remaining > 0:
+                    pnl = (price - pos.entry_price) * remaining
                     self._submit_and_log(client, ticker, "sell", remaining, price,
                                           signal_reason[ticker], account.equity,
-                                          category="signal_exit")
+                                          category="signal_exit", pnl=pnl)
                 state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
 
         # --- Monthly rebalance: trim oversized positions ---
@@ -191,9 +207,10 @@ class DailyRunner:
                 if value > cap_dollars:
                     excess_shares = float(int((value - cap_dollars) / price))
                     if excess_shares > 0:
+                        pnl = (price - pos.entry_price) * excess_shares
                         self._submit_and_log(client, ticker, "sell", excess_shares, price,
                                               "Monthly rebalance: trimmed to max position size cap",
-                                              account.equity, category="rebalance_trim")
+                                              account.equity, category="rebalance_trim", pnl=pnl)
             state.last_rebalance_date = today.isoformat()
 
         # --- Entries ---
@@ -219,8 +236,10 @@ class DailyRunner:
         self._note(summary)
 
         if self.live:
+            log_equity_snapshot(today.isoformat(), account.equity, account.cash)
+            state.previous_equity = account.equity
             save_state(state)
-            asyncio.run(self._send_telegram_summary())
+            asyncio.run(self._send_telegram_summary(account, portfolio, period_return_pct))
 
         return "\n".join(self.messages)
 
@@ -233,14 +252,21 @@ class DailyRunner:
     }
 
     def _submit_and_log(self, client: AlpacaClient, ticker: str, side: str, shares: float,
-                         price: float, reason: str, equity: float, category: str) -> None:
+                         price: float, reason: str, equity: float, category: str,
+                         pnl: float | None = None) -> None:
         if self.live:
             client.submit_market_order(ticker, shares, side)
         emoji, label = self._CATEGORY_LABELS.get(category, ("⚪", side.upper()))
         prefix = "" if self.live else "🧪 [DRY RUN] "
-        self._note(f"{prefix}{emoji} {label}: {shares:g} {ticker} @ ~${price:.2f}\n   {reason}")
-        log_trade(ticker, datetime.now(timezone.utc).date().isoformat(), side, shares, price,
-                   reason, equity)
+        pnl_text = f" (P&L {pnl:+,.2f})" if pnl is not None else ""
+        self._note(f"{prefix}{emoji} {label}: {shares:g} {ticker} @ ~${price:.2f}{pnl_text}\n   {reason}")
+        trade_date = datetime.now(timezone.utc).date().isoformat()
+        log_trade(ticker, trade_date, side, shares, price, reason, equity,
+                   category=category, pnl=pnl, dry_run=not self.live)
+        self.trade_records.append({
+            "date": trade_date, "action": category, "ticker": ticker,
+            "shares": shares, "price": price,
+        })
 
     def _daily_summary(self, account: AccountSnapshot, portfolio: PortfolioState) -> str:
         lines = [
@@ -252,11 +278,37 @@ class DailyRunner:
             lines.append("⏸️ Status: PAUSED")
         return "\n".join(lines)
 
-    async def _send_telegram_summary(self) -> None:
-        from halal_bot.telegram.bot import send_alert
+    def _ai_narrate(self, account: AccountSnapshot, portfolio: PortfolioState,
+                     period_return_pct: float) -> str | None:
+        """Section 8: low-frequency (once/day, this call site only) plain-English
+        narration of state the rules engine already decided — never a trade decision.
+        Degrades silently to None (deterministic summary still sends) if no
+        ANTHROPIC_API_KEY is set or the API call fails for any reason."""
+        import os
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            return None
+        from halal_bot.ai_summary.summarizer import generate_portfolio_summary
 
         try:
-            await send_alert("\n".join(self.messages))
+            return generate_portfolio_summary(
+                equity=account.equity,
+                cash=account.cash,
+                positions=account.positions,
+                recent_trades=self.trade_records,
+                period_return_pct=period_return_pct,
+            )
+        except Exception as e:
+            log_event("ai_summary_failed", str(e))
+            return None
+
+    async def _send_telegram_summary(self, account: AccountSnapshot, portfolio: PortfolioState,
+                                       period_return_pct: float) -> None:
+        from halal_bot.telegram.bot import send_alert
+
+        narration = self._ai_narrate(account, portfolio, period_return_pct)
+        parts = ([f"🤖 {narration}", ""] if narration else []) + self.messages
+        try:
+            await send_alert("\n".join(parts))
         except RuntimeError as e:
             log_event("telegram_send_failed", str(e))
 
