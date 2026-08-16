@@ -2,9 +2,10 @@
 
 Simulates the same rules the live bot will use: signal entries/exits
 (halal_bot.signals.strategy), position sizing / stop-loss / profit-take /
-drawdown-pause / sector-cap (halal_bot.risk.rules), and a simple monthly
+drawdown-pause / sector-cap (halal_bot.risk.rules), a simple monthly
 rebalance that trims any position that has drifted above the max position
-size.
+size, and forced anchor-ETF allocation (SPEC.md Section 3) independent of
+the technical signal.
 
 LIMITATION: the halal compliance screen is run once against *current*
 fundamentals (halal_bot.screening) — free data sources don't provide
@@ -76,15 +77,24 @@ class BacktestEngine:
             t: df["signal_reason"].reindex(self.master_dates, fill_value="")
             for t, df in self.signals.items()
         }
-        self.has_data = {
-            t: df["Close"].reindex(self.master_dates).notna() for t, df in self.signals.items()
-        }
 
     def _prices_on(self, date) -> dict[str, float]:
+        """Forward-filled close for every ticker with a valid price by this
+        date. Deliberately does NOT require *native* (non-ffilled) data on
+        this exact date — a ticker with a one-day data gap from the provider
+        (rare, but real: e.g. SPUS/HLAL/ABBV/PSX all show a gap on one
+        specific date in yfinance's feed as of this writing) should carry
+        forward its last known price for valuation, not silently drop to $0
+        for that day. A previous version required native data and produced
+        exactly that bug: a ~20% single-day equity cliff that fully
+        "recovered" the next day, entirely a valuation artifact, not a real
+        market move. Entry/exit *signals* are unaffected by this — those
+        still only fire on days with genuine native data (see entry_native/
+        exit_native above, reindexed with fill_value=False)."""
         return {
             t: self.close_ff[t][date]
             for t in self.signals
-            if self.has_data[t][date] and not pd.isna(self.close_ff[t][date])
+            if not pd.isna(self.close_ff[t][date])
         }
 
     def run(self, start_date=None, end_date=None) -> BacktestResult:
@@ -150,7 +160,17 @@ class BacktestEngine:
                     trades.append(Trade(str(date.date()), ticker, "scale_out", decision.shares,
                                          sell_price, pnl, decision.reason))
 
-                if ticker in self.exit_native and bool(self.exit_native[ticker].get(date, False)):
+                # Anchor ETFs don't get sold on a death cross — they're
+                # supposed to be held independent of the technical signal
+                # (that's the whole point of an "anchor"). Without this,
+                # a death cross sells it and the anchor-allocation block
+                # below immediately rebuys it same-day, churning slippage
+                # for no purpose on every whipsaw.
+                is_anchor = ticker in CONFIG.portfolio.anchor_etf_tickers[
+                    :CONFIG.portfolio.anchor_etf_slots
+                ]
+                if (not is_anchor and ticker in self.exit_native
+                        and bool(self.exit_native[ticker].get(date, False))):
                     sell_price = price * (1 - slippage)
                     pnl = (sell_price - pos.entry_price) * pos.shares
                     portfolio.cash += pos.shares * sell_price
@@ -177,6 +197,36 @@ class BacktestEngine:
                             trades.append(Trade(str(date.date()), ticker, "rebalance_trim",
                                                  excess_shares, sell_price, pnl,
                                                  "Trimmed to max position size cap"))
+
+            # --- Anchor allocation (SPEC.md Section 3): force-hold configured
+            # anchor ETFs at the standard position size, independent of the
+            # technical signal — a stability anchor that depends on catching
+            # a golden cross isn't actually an anchor. Runs before the
+            # signal-driven entries below so anchors get first claim on open
+            # slots. Re-buys automatically if ever stopped out, since
+            # `ticker in portfolio.positions` is the only gate.
+            equity = portfolio.equity(prices)
+            for ticker in CONFIG.portfolio.anchor_etf_tickers[:CONFIG.portfolio.anchor_etf_slots]:
+                if ticker not in self.signals or ticker in portfolio.positions or ticker not in prices:
+                    continue
+                price = prices[ticker]
+                sector = self.sector_map.get(ticker, "Unknown")
+                dollars = min(max_position_dollars(equity), portfolio.cash)
+                allowed, _reason = can_open_new_position(portfolio, sector, dollars, prices)
+                if not allowed:
+                    continue
+                buy_price = price * (1 + slippage)
+                shares = position_size_shares(equity, buy_price)
+                cost = shares * buy_price
+                if shares <= 0 or cost > portfolio.cash:
+                    continue
+                portfolio.cash -= cost
+                portfolio.positions[ticker] = Position(
+                    ticker=ticker, sector=sector, shares=shares,
+                    entry_price=buy_price, entry_date=str(date.date()),
+                )
+                trades.append(Trade(str(date.date()), ticker, "buy", shares, buy_price,
+                                     reason="Anchor allocation (forced, independent of signal)"))
 
             # --- Entries ---
             equity = portfolio.equity(prices)

@@ -185,7 +185,12 @@ class DailyRunner:
                 if ticker not in state.scaled_out_tickers:
                     state.scaled_out_tickers.append(ticker)
 
-            if exit_signal.get(ticker):
+            # Anchor ETFs don't get sold on a death cross — held independent
+            # of the technical signal by design (see anchor allocation block
+            # below). Without this, a death cross sells it and the anchor
+            # block immediately rebuys it same-run, churning for no purpose.
+            is_anchor = ticker in CONFIG.portfolio.anchor_etf_tickers[:CONFIG.portfolio.anchor_etf_slots]
+            if not is_anchor and exit_signal.get(ticker):
                 remaining = pos.shares if decision.action != "scale_out" else (
                     pos.shares - decision.shares
                 )
@@ -212,6 +217,29 @@ class DailyRunner:
                                               "Monthly rebalance: trimmed to max position size cap",
                                               account.equity, category="rebalance_trim", pnl=pnl)
             state.last_rebalance_date = today.isoformat()
+
+        # --- Anchor allocation (SPEC.md Section 3): force-hold configured
+        # anchor ETFs at the standard position size, independent of the
+        # technical signal — mirrors halal_bot.backtest.engine exactly.
+        # Re-buys automatically if ever stopped out, since "not currently
+        # held" is the only gate.
+        for ticker in CONFIG.portfolio.anchor_etf_tickers[:CONFIG.portfolio.anchor_etf_slots]:
+            if (ticker not in state.compliant_universe or ticker in portfolio.positions
+                    or ticker not in latest_price):
+                continue
+            price = latest_price[ticker]
+            sector = state.sector_map.get(ticker, "Unknown")
+            dollars = min(max_position_dollars(account.equity), portfolio.cash)
+            allowed, reason = can_open_new_position(portfolio, sector, dollars, latest_price)
+            if not allowed:
+                continue
+            shares = position_size_shares(account.equity, price)
+            if shares <= 0:
+                continue
+            self._submit_and_log(client, ticker, "buy", shares, price,
+                                  "Anchor allocation (forced, independent of signal)",
+                                  account.equity, category="anchor_buy")
+            portfolio.cash -= shares * price
 
         # --- Entries ---
         for ticker in sorted(state.compliant_universe):
@@ -245,6 +273,7 @@ class DailyRunner:
 
     _CATEGORY_LABELS = {
         "buy": ("🟢", "BUY"),
+        "anchor_buy": ("⚓", "ANCHOR BUY"),
         "stop_loss": ("🛑", "STOP-LOSS SELL"),
         "scale_out": ("💰", "PROFIT-TAKE SELL"),
         "signal_exit": ("🔵", "SIGNAL EXIT SELL"),
