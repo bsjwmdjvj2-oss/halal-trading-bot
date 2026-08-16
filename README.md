@@ -8,12 +8,17 @@ See `SPEC.md` (the original build spec) for full requirements.
 1. ✅ Project scaffold
 2. ✅ Halal watchlist (`data/watchlist.yaml`)
 3. ✅ AAOIFI-style screening (`halal_bot/screening/`)
-4. ✅ Technical signal generation (`halal_bot/signals/`) — tuned + out-of-sample validated
+4. ✅ Technical signal generation (`halal_bot/signals/`) — golden cross + RSI + volume +
+   MACD confirmation, tuned and out-of-sample validated (an ADX trend filter was also
+   tested and rejected — see commit history / module docstring in `strategy.py`)
 5. ✅ Risk management rules (`halal_bot/risk/`)
 6. ✅ Backtest engine + metrics (`halal_bot/backtest/`)
 7. ✅ Audit-trail logging (`halal_bot/logging_utils.py`)
 8. ✅ Live daily trading job (`halal_bot/live/`), Alpaca client, Telegram bot, deployed per `DEPLOY.md`
-9. AI summary agent (`halal_bot/ai_summary/`) — built, not yet wired into the daily job by default
+9. ✅ AI summary agent (`halal_bot/ai_summary/`) — narrates the daily Telegram summary when
+   `ANTHROPIC_API_KEY` is set; degrades silently to a deterministic summary without one
+10. ✅ P&L dashboard (`halal_bot/dashboard/`) — win rate, max drawdown, Sharpe, daily/weekly/
+    monthly P&L from real trade history, via `scripts/generate_dashboard.py` or `/dashboard`
 
 ## Setup
 

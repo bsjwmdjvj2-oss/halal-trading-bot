@@ -53,6 +53,14 @@ def adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int) -> pd.Se
     return _col(result, "ADX_")
 
 
+def macd(close: pd.Series, fast: int, slow: int, signal: int) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Returns (macd_line, signal_line, histogram). Shared by the
+    research-only bundle below and by generate_signals()'s optional
+    macd_filter (halal_bot.signals.strategy), so both use identical values."""
+    result = ta.macd(close, fast=fast, slow=slow, signal=signal)
+    return _col(result, "MACD_"), _col(result, "MACDs_"), _col(result, "MACDh_")
+
+
 def add_research_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Adds macd/macd_signal/macd_hist, bb_lower/bb_mid/bb_upper/bb_percent,
     and adx/plus_di/minus_di columns via pandas-ta. Research-only — nothing
@@ -60,10 +68,9 @@ def add_research_indicators(df: pd.DataFrame) -> pd.DataFrame:
     cfg = CONFIG.signal
     out = df.copy()
 
-    macd = ta.macd(out["Close"], fast=cfg.macd_fast, slow=cfg.macd_slow, signal=cfg.macd_signal)
-    out["macd"] = _col(macd, "MACD_")
-    out["macd_signal"] = _col(macd, "MACDs_")
-    out["macd_hist"] = _col(macd, "MACDh_")
+    out["macd"], out["macd_signal"], out["macd_hist"] = macd(
+        out["Close"], cfg.macd_fast, cfg.macd_slow, cfg.macd_signal
+    )
 
     bbands = ta.bbands(out["Close"], length=cfg.bbands_period, std=cfg.bbands_std)
     out["bb_lower"] = _col(bbands, "BBL_")
