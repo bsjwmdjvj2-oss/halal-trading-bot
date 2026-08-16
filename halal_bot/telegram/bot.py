@@ -132,9 +132,21 @@ def build_application(portfolio_status_fn=None):
         print("[telegram] /dashboard received")
         if not _authorized(update):
             return
-        from halal_bot.dashboard.report import build_dashboard, render_text
+        from halal_bot.dashboard.report import build_dashboard, render_text as render_dashboard
 
-        await update.message.reply_text(render_text(build_dashboard()))
+        await update.message.reply_text(render_dashboard(build_dashboard()))
+
+    async def screening_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("[telegram] /screening received")
+        if not _authorized(update):
+            return
+        from halal_bot.screening.report import load_latest_screening, render_text as render_screening
+
+        text = render_screening(load_latest_screening())
+        # Telegram caps messages at 4096 chars — the compliant-ticker list can
+        # approach that with a large watchlist, so split rather than truncate.
+        for i in range(0, len(text), 4000):
+            await update.message.reply_text(text[i:i + 4000])
 
     async def _register_command_menu(application: Application) -> None:
         # Populates Telegram's native "/" menu button in the chat — otherwise
@@ -142,6 +154,7 @@ def build_application(portfolio_status_fn=None):
         await application.bot.set_my_commands([
             BotCommand("status", "Portfolio status & open positions"),
             BotCommand("dashboard", "P&L, win rate, drawdown, Sharpe"),
+            BotCommand("screening", "Halal screen: who passed/failed & why"),
             BotCommand("pause", "Stop opening new positions"),
             BotCommand("resume", "Resume trading"),
         ])
@@ -154,6 +167,7 @@ def build_application(portfolio_status_fn=None):
     )
     application.add_handler(CommandHandler("status", status_cmd))
     application.add_handler(CommandHandler("dashboard", dashboard_cmd))
+    application.add_handler(CommandHandler("screening", screening_cmd))
     application.add_handler(CommandHandler("pause", pause_cmd))
     application.add_handler(CommandHandler("resume", resume_cmd))
     return application
