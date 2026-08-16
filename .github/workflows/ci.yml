@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile check (catches syntax/import errors)
+        run: python -m compileall -q halal_bot scripts tests
+
+      - name: Daily-runner smoke test
+        # Hits real yfinance data (AAPL/MSFT/NVDA) with a fake Alpaca client —
+        # exercises the actual live-trading code path end to end without
+        # needing real credentials. May occasionally be flaky if Yahoo
+        # Finance rate-limits GitHub's shared runners; re-run if so.
+        run: python tests/test_daily_runner.py
