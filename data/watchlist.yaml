@@ -33,11 +33,32 @@ stocks:
   - {ticker: CRWD,  sector: Technology}
   - {ticker: SNOW,  sector: Technology}
   - {ticker: SHOP,  sector: Technology}
+  - {ticker: ADSK,  sector: Technology}
+  - {ticker: WDAY,  sector: Technology}
+  - {ticker: TEAM,  sector: Technology}
+  - {ticker: ZS,    sector: Technology}
+  - {ticker: DDOG,  sector: Technology}
+  - {ticker: NET,   sector: Technology}
+  - {ticker: MDB,   sector: Technology}
+  - {ticker: FTNT,  sector: Technology}
+  - {ticker: ANSS,  sector: Technology}
+  - {ticker: CDNS,  sector: Technology}
+  - {ticker: SNPS,  sector: Technology}
+  - {ticker: MU,    sector: Technology}
+  - {ticker: LRCX,  sector: Technology}
+  - {ticker: KLAC,  sector: Technology}
+  - {ticker: ASML,  sector: Technology}
+  - {ticker: TSM,   sector: Technology}
+  - {ticker: ARM,   sector: Technology}
+  - {ticker: PLTR,  sector: Technology}
 
   # Communication Services
   - {ticker: META,  sector: Communication Services}
   - {ticker: NFLX,  sector: Communication Services}
   - {ticker: DIS,   sector: Communication Services}
+  - {ticker: TMUS,  sector: Communication Services}
+  - {ticker: TTD,   sector: Communication Services}
+  - {ticker: ROKU,  sector: Communication Services}
 
   # Consumer Discretionary
   - {ticker: AMZN,  sector: Consumer Discretionary}
@@ -47,11 +68,28 @@ stocks:
   - {ticker: HD,    sector: Consumer Discretionary}
   - {ticker: LOW,   sector: Consumer Discretionary}
   - {ticker: MCD,   sector: Consumer Discretionary}
+  - {ticker: UBER,  sector: Consumer Discretionary}
+  - {ticker: ABNB,  sector: Consumer Discretionary}
+  - {ticker: BKNG,  sector: Consumer Discretionary}
+  - {ticker: CMG,   sector: Consumer Discretionary}
+  - {ticker: ORLY,  sector: Consumer Discretionary}
+  - {ticker: AZO,   sector: Consumer Discretionary}
+  - {ticker: ROST,  sector: Consumer Discretionary}
+  - {ticker: TJX,   sector: Consumer Discretionary}
+  - {ticker: YUM,   sector: Consumer Discretionary}
+  - {ticker: DPZ,   sector: Consumer Discretionary}
 
   # Consumer Staples
   - {ticker: PG,    sector: Consumer Staples}
   - {ticker: COST,  sector: Consumer Staples}
   - {ticker: WMT,   sector: Consumer Staples}
+  - {ticker: KO,    sector: Consumer Staples}
+  - {ticker: PEP,   sector: Consumer Staples}
+  - {ticker: CL,    sector: Consumer Staples}
+  - {ticker: KMB,   sector: Consumer Staples}
+  - {ticker: EL,    sector: Consumer Staples}
+  - {ticker: MNST,  sector: Consumer Staples}
+  - {ticker: KDP,   sector: Consumer Staples}
 
   # Healthcare
   - {ticker: LLY,   sector: Healthcare}
@@ -60,27 +98,68 @@ stocks:
   - {ticker: ISRG,  sector: Healthcare}
   - {ticker: VRTX,  sector: Healthcare}
   - {ticker: REGN,  sector: Healthcare}
+  - {ticker: MRK,   sector: Healthcare}
+  - {ticker: PFE,   sector: Healthcare}
+  - {ticker: MDT,   sector: Healthcare}
+  - {ticker: SYK,   sector: Healthcare}
+  - {ticker: BSX,   sector: Healthcare}
+  - {ticker: DXCM,  sector: Healthcare}
+  - {ticker: IDXX,  sector: Healthcare}
+  - {ticker: GILD,  sector: Healthcare}
+  - {ticker: AMGN,  sector: Healthcare}
+  - {ticker: BIIB,  sector: Healthcare}
+  - {ticker: ZTS,   sector: Healthcare}
+  - {ticker: EW,    sector: Healthcare}
+  - {ticker: HCA,   sector: Healthcare}
 
-  # Industrials
+  # Industrials (no defense/weapons manufacturers — excluded per screen)
   - {ticker: HON,   sector: Industrials}
   - {ticker: CAT,   sector: Industrials}
   - {ticker: DE,    sector: Industrials}
   - {ticker: GE,    sector: Industrials}
   - {ticker: UPS,   sector: Industrials}
+  - {ticker: ITW,   sector: Industrials}
+  - {ticker: EMR,   sector: Industrials}
+  - {ticker: ETN,   sector: Industrials}
+  - {ticker: ROP,   sector: Industrials}
+  - {ticker: PH,    sector: Industrials}
+  - {ticker: FDX,   sector: Industrials}
+  - {ticker: NSC,   sector: Industrials}
+  - {ticker: UNP,   sector: Industrials}
+  - {ticker: CSX,   sector: Industrials}
+  - {ticker: WM,    sector: Industrials}
+  - {ticker: RSG,   sector: Industrials}
 
   # Materials
   - {ticker: LIN,   sector: Materials}
   - {ticker: APD,   sector: Materials}
+  - {ticker: SHW,   sector: Materials}
+  - {ticker: ECL,   sector: Materials}
+  - {ticker: NEM,   sector: Materials}
+  - {ticker: FCX,   sector: Materials}
 
   # Energy (integrated oil & gas — business activity generally permissible;
   # still subject to debt/interest ratio screen like everything else)
   - {ticker: XOM,   sector: Energy}
   - {ticker: CVX,   sector: Energy}
+  - {ticker: COP,   sector: Energy}
+  - {ticker: SLB,   sector: Energy}
+  - {ticker: EOG,   sector: Energy}
+  - {ticker: PSX,   sector: Energy}
+  - {ticker: MPC,   sector: Energy}
+  - {ticker: OXY,   sector: Energy}
 
   # Payments (fee-based processors, not direct interest-bearing lenders —
   # ratio screen decides eligibility; flag for extra scrutiny)
   - {ticker: V,     sector: Financial Services - Payments}
   - {ticker: MA,    sector: Financial Services - Payments}
+
+  # Real Estate (equity REITs — often carry disqualifying interest-based
+  # debt; listed as candidates and left to the quantitative ratio screen)
+  - {ticker: PLD,   sector: Real Estate}
+  - {ticker: EQIX,  sector: Real Estate}
+  - {ticker: DLR,   sector: Real Estate}
+  - {ticker: O,     sector: Real Estate}
 
 # Anchor ETFs — broad halal-screened index funds used as optional stability
 # anchors (Section 3). These are pre-screened by their fund providers but
@@ -89,3 +168,4 @@ etfs:
   - {ticker: SPUS, sector: Broad Market ETF, name: "SP Funds S&P 500 Sharia Industry Exclusions ETF"}
   - {ticker: HLAL, sector: Broad Market ETF, name: "Wahed FTSE USA Shariah ETF"}
   - {ticker: SPTE, sector: Technology ETF,   name: "SP Funds S&P Global Technology ETF"}
+  - {ticker: SPWO, sector: Broad Market ETF, name: "SP Funds S&P World (ex-US) Sharia ETF"}
