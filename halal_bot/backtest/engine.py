@@ -52,10 +52,13 @@ class BacktestResult:
 
 
 class BacktestEngine:
-    def __init__(self, price_data: dict[str, pd.DataFrame], sector_map: dict[str, str]):
-        """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant)."""
+    def __init__(self, price_data: dict[str, pd.DataFrame], sector_map: dict[str, str],
+                 adx_filter: bool = False):
+        """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant).
+        adx_filter: forwarded to generate_signals() — see its docstring."""
         self.sector_map = sector_map
-        self.signals = {t: generate_signals(df) for t, df in price_data.items() if not df.empty}
+        self.signals = {t: generate_signals(df, adx_filter=adx_filter)
+                         for t, df in price_data.items() if not df.empty}
         self.master_dates = sorted(set().union(*[df.index for df in self.signals.values()]))
 
         self.close_ff = {

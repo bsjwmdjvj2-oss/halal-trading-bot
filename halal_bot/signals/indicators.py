@@ -45,6 +45,14 @@ def _col(frame: pd.DataFrame, prefix: str) -> pd.Series:
     return frame[matches[0]]
 
 
+def adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int) -> pd.Series:
+    """Average Directional Index — trend strength, 0-100. Shared by the
+    research-only bundle below and by generate_signals()'s optional
+    adx_filter (halal_bot.signals.strategy), so both use identical values."""
+    result = ta.adx(high, low, close, length=period)
+    return _col(result, "ADX_")
+
+
 def add_research_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Adds macd/macd_signal/macd_hist, bb_lower/bb_mid/bb_upper/bb_percent,
     and adx/plus_di/minus_di columns via pandas-ta. Research-only — nothing
@@ -63,10 +71,10 @@ def add_research_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out["bb_upper"] = _col(bbands, "BBU_")
     out["bb_percent"] = _col(bbands, "BBP_")
 
-    adx = ta.adx(out["High"], out["Low"], out["Close"], length=cfg.adx_period)
-    out["adx"] = _col(adx, "ADX_")
-    out["plus_di"] = _col(adx, "DMP_")
-    out["minus_di"] = _col(adx, "DMN_")
+    adx_result = ta.adx(out["High"], out["Low"], out["Close"], length=cfg.adx_period)
+    out["adx"] = _col(adx_result, "ADX_")
+    out["plus_di"] = _col(adx_result, "DMP_")
+    out["minus_di"] = _col(adx_result, "DMN_")
 
     return out
 

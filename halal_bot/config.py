@@ -59,6 +59,7 @@ class SignalConfig:
     bbands_period: int = 20
     bbands_std: float = 2.0
     adx_period: int = 14
+    adx_trend_threshold: float = 25.0  # textbook cutoff: below = ranging/choppy, above = trending
 
 
 @dataclass(frozen=True)
