@@ -1,0 +1,91 @@
+# Halal candidate universe — business-activity pre-screen only.
+#
+# This list excludes companies with primary business activity in:
+# alcohol, tobacco, gambling, conventional banking/lending, conventional
+# insurance, adult entertainment, pork products, and conventional
+# defense/weapons manufacturing (per halal_bot.config.ScreeningConfig).
+#
+# It is NOT a compliance guarantee. Each ticker still goes through the
+# quantitative AAOIFI ratio screen (debt ratio, impure income ratio,
+# cash+securities ratio) in halal_bot/screening/ before it's eligible for
+# the portfolio, and is re-screened on ScreeningConfig.rescreen_interval_days.
+# Maintain this list manually; review at each quarterly strategy review
+# (Section 6 of SPEC.md).
+#
+# sector values are used for the sector concentration cap (Section 5).
+
+stocks:
+  # Technology
+  - {ticker: AAPL,  sector: Technology}
+  - {ticker: MSFT,  sector: Technology}
+  - {ticker: NVDA,  sector: Technology}
+  - {ticker: GOOGL, sector: Technology}
+  - {ticker: AVGO,  sector: Technology}
+  - {ticker: ADBE,  sector: Technology}
+  - {ticker: CRM,   sector: Technology}
+  - {ticker: ORCL,  sector: Technology}
+  - {ticker: NOW,   sector: Technology}
+  - {ticker: INTU,  sector: Technology}
+  - {ticker: AMD,   sector: Technology}
+  - {ticker: QCOM,  sector: Technology}
+  - {ticker: TXN,   sector: Technology}
+  - {ticker: PANW,  sector: Technology}
+  - {ticker: CRWD,  sector: Technology}
+  - {ticker: SNOW,  sector: Technology}
+  - {ticker: SHOP,  sector: Technology}
+
+  # Communication Services
+  - {ticker: META,  sector: Communication Services}
+  - {ticker: NFLX,  sector: Communication Services}
+  - {ticker: DIS,   sector: Communication Services}
+
+  # Consumer Discretionary
+  - {ticker: AMZN,  sector: Consumer Discretionary}
+  - {ticker: TSLA,  sector: Consumer Discretionary}
+  - {ticker: NKE,   sector: Consumer Discretionary}
+  - {ticker: SBUX,  sector: Consumer Discretionary}
+  - {ticker: HD,    sector: Consumer Discretionary}
+  - {ticker: LOW,   sector: Consumer Discretionary}
+  - {ticker: MCD,   sector: Consumer Discretionary}
+
+  # Consumer Staples
+  - {ticker: PG,    sector: Consumer Staples}
+  - {ticker: COST,  sector: Consumer Staples}
+  - {ticker: WMT,   sector: Consumer Staples}
+
+  # Healthcare
+  - {ticker: LLY,   sector: Healthcare}
+  - {ticker: ABBV,  sector: Healthcare}
+  - {ticker: JNJ,   sector: Healthcare}
+  - {ticker: ISRG,  sector: Healthcare}
+  - {ticker: VRTX,  sector: Healthcare}
+  - {ticker: REGN,  sector: Healthcare}
+
+  # Industrials
+  - {ticker: HON,   sector: Industrials}
+  - {ticker: CAT,   sector: Industrials}
+  - {ticker: DE,    sector: Industrials}
+  - {ticker: GE,    sector: Industrials}
+  - {ticker: UPS,   sector: Industrials}
+
+  # Materials
+  - {ticker: LIN,   sector: Materials}
+  - {ticker: APD,   sector: Materials}
+
+  # Energy (integrated oil & gas — business activity generally permissible;
+  # still subject to debt/interest ratio screen like everything else)
+  - {ticker: XOM,   sector: Energy}
+  - {ticker: CVX,   sector: Energy}
+
+  # Payments (fee-based processors, not direct interest-bearing lenders —
+  # ratio screen decides eligibility; flag for extra scrutiny)
+  - {ticker: V,     sector: Financial Services - Payments}
+  - {ticker: MA,    sector: Financial Services - Payments}
+
+# Anchor ETFs — broad halal-screened index funds used as optional stability
+# anchors (Section 3). These are pre-screened by their fund providers but
+# still logged through the re-screening cadence for audit purposes.
+etfs:
+  - {ticker: SPUS, sector: Broad Market ETF, name: "SP Funds S&P 500 Sharia Industry Exclusions ETF"}
+  - {ticker: HLAL, sector: Broad Market ETF, name: "Wahed FTSE USA Shariah ETF"}
+  - {ticker: SPTE, sector: Technology ETF,   name: "SP Funds S&P Global Technology ETF"}

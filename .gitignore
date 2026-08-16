@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+logs/*.jsonl
+logs/*.log
+backtest_results/
+data/price_cache/
+data/live_state.json
+data/live_state.json.tmp
+.DS_Store
+*.egg-info/
