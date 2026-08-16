@@ -5,7 +5,9 @@ python-dotenv>=1.0
 PyYAML>=6.0
 matplotlib>=3.7
 pyarrow>=15.0
-pandas-ta>=0.4
+pandas-ta>=0.4.67b0  # PyPI only has pre-releases (0.4.6xb0/0.4.7xb0) — the b0
+                      # segment must appear in the specifier or pip refuses to
+                      # resolve it at all, even though it's the only version that exists
 
 # Live trading / notifications (wired up after backtest validation)
 alpaca-py>=0.30
