@@ -83,20 +83,28 @@ def build_application(portfolio_status_fn=None):
     from telegram.ext import Application, CommandHandler, ContextTypes
 
     def _authorized(update: Update) -> bool:
-        return str(update.effective_chat.id) == str(CONFIG.telegram.chat_id)
+        incoming = str(update.effective_chat.id)
+        configured = str(CONFIG.telegram.chat_id)
+        ok = incoming == configured
+        print(f"[telegram] incoming message from chat_id={incoming} "
+              f"(configured chat_id={configured}) -> {'authorized' if ok else 'IGNORED, mismatch'}")
+        return ok
 
     async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("[telegram] /status received")
         if not _authorized(update):
             return
         await update.message.reply_text(portfolio_status_fn())
 
     async def pause_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("[telegram] /pause received")
         if not _authorized(update):
             return
         TRADING_STATE.pause()
         await update.message.reply_text("Trading paused. No new positions will be opened until /resume.")
 
     async def resume_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("[telegram] /resume received")
         if not _authorized(update):
             return
         TRADING_STATE.resume()

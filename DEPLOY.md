@@ -13,24 +13,13 @@ which breaks both Alpaca and `api.telegram.org` (SPEC.md Section 2/12).
 
 ## 1. Get the code onto PythonAnywhere
 
-This repo has no GitHub remote yet. Easiest path:
+The code is on GitHub at https://github.com/bsjwmdjvj2-oss/halal-trading-bot
+(public repo — no auth needed to clone). In a PythonAnywhere **Bash console**:
 
 ```bash
-# locally, from the project root
-gh repo create halal-trading-bot --private --source=. --remote=origin
-git add -A && git commit -m "Initial commit"
-git push -u origin master
-```
-
-Then, in a PythonAnywhere **Bash console**:
-
-```bash
-git clone https://github.com/<you>/halal-trading-bot.git TradingAlpaca
+git clone https://github.com/bsjwmdjvj2-oss/halal-trading-bot.git TradingAlpaca
 cd TradingAlpaca
 ```
-
-(No GitHub? Zip the project locally and upload it via the **Files** tab,
-then `unzip` it in a Bash console instead.)
 
 ## 2. Set up the environment
 
@@ -97,14 +86,14 @@ account snapshot back. `Ctrl+C` to stop before continuing.
 Go to the **Tasks** tab.
 
 **Scheduled Task** (daily job):
-- Command: `/home/<you>/TradingAlpaca/.venv/bin/python /home/<you>/TradingAlpaca/scripts/run_daily.py`
+- Command: `/home/farisalmazrouei/TradingAlpaca/.venv/bin/python /home/farisalmazrouei/TradingAlpaca/scripts/run_daily.py`
 - Time: PythonAnywhere schedules in **UTC**. US market close is 4:00pm ET,
   which is 20:00 UTC (EDT, summer) or 21:00 UTC (EST, winter). Schedule at
   **21:30 UTC** to be safely after close year-round without needing to
   adjust for daylight saving.
 
 **Always-on Task** (Telegram bot):
-- Command: `/home/<you>/TradingAlpaca/.venv/bin/python /home/<you>/TradingAlpaca/scripts/run_telegram_bot.py`
+- Command: `/home/farisalmazrouei/TradingAlpaca/.venv/bin/python /home/farisalmazrouei/TradingAlpaca/scripts/run_telegram_bot.py`
 
 Using the venv's own `python` (full path) avoids needing to `source activate`
 inside the task, since PythonAnywhere tasks don't run your shell profile.
