@@ -33,22 +33,38 @@ TRADING_STATE = TradingStateFlag()
 
 
 def default_status_fn() -> str:
-    """Default /status text: live Alpaca account snapshot + open positions."""
+    """Default /status text: live Alpaca account snapshot + open positions.
+
+    Plain text, no Telegram parse_mode — trade/signal reasons elsewhere in
+    the bot contain "<"/">" (e.g. "rsi=64.2 < 70.0") which would break
+    HTML/Markdown parsing and silently drop the message. Emojis + layout
+    give a real readability upgrade without that risk.
+    """
+    from halal_bot.config import CONFIG
     from halal_bot.broker.alpaca_client import AlpacaClient
 
     account = AlpacaClient().get_account_snapshot()
     state = load_state()
+
     lines = [
-        f"Equity: ${account.equity:,.2f}",
-        f"Cash: ${account.cash:,.2f}",
-        f"Paused: {'yes' if state.trading_paused else 'no'}",
-        f"Positions ({len(account.positions)}):",
+        "📊 PORTFOLIO STATUS",
+        "",
+        f"💰 Equity:  ${account.equity:,.2f}",
+        f"💵 Cash:    ${account.cash:,.2f}",
+        f"{'⏸️ Paused:  YES' if state.trading_paused else '▶️ Paused:  no'}",
+        "",
+        f"📈 Positions ({len(account.positions)}/{CONFIG.portfolio.target_positions_max})",
     ]
     if account.positions:
         for ticker, p in sorted(account.positions.items()):
-            unrealized = p["market_value"] - p["qty"] * p["avg_entry_price"]
-            lines.append(f"  {ticker}: {p['qty']} sh, mkt ${p['market_value']:,.2f}, "
-                         f"unrealized ${unrealized:+,.2f}")
+            cost_basis = p["qty"] * p["avg_entry_price"]
+            unrealized = p["market_value"] - cost_basis
+            pct = (unrealized / cost_basis * 100) if cost_basis else 0.0
+            arrow = "🟢" if unrealized >= 0 else "🔴"
+            lines.append(
+                f"{arrow} {ticker}: {p['qty']:g} sh · ${p['market_value']:,.2f} "
+                f"· {unrealized:+,.2f} ({pct:+.1f}%)"
+            )
     else:
         lines.append("  (none)")
     return "\n".join(lines)
@@ -101,14 +117,16 @@ def build_application(portfolio_status_fn=None):
         if not _authorized(update):
             return
         TRADING_STATE.pause()
-        await update.message.reply_text("Trading paused. No new positions will be opened until /resume.")
+        await update.message.reply_text(
+            "⏸️ Trading paused. No new positions will be opened until /resume."
+        )
 
     async def resume_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("[telegram] /resume received")
         if not _authorized(update):
             return
         TRADING_STATE.resume()
-        await update.message.reply_text("Trading resumed.")
+        await update.message.reply_text("▶️ Trading resumed.")
 
     application = Application.builder().token(CONFIG.telegram.bot_token).build()
     application.add_handler(CommandHandler("status", status_cmd))

@@ -160,13 +160,13 @@ class DailyRunner:
 
             if decision.action == "stop_loss":
                 self._submit_and_log(client, ticker, "sell", pos.shares, price, decision.reason,
-                                      account.equity)
+                                      account.equity, category="stop_loss")
                 state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
                 continue
 
             if decision.action == "scale_out":
                 self._submit_and_log(client, ticker, "sell", decision.shares, price,
-                                      decision.reason, account.equity)
+                                      decision.reason, account.equity, category="scale_out")
                 if ticker not in state.scaled_out_tickers:
                     state.scaled_out_tickers.append(ticker)
 
@@ -176,7 +176,8 @@ class DailyRunner:
                 )
                 if remaining > 0:
                     self._submit_and_log(client, ticker, "sell", remaining, price,
-                                          signal_reason[ticker], account.equity)
+                                          signal_reason[ticker], account.equity,
+                                          category="signal_exit")
                 state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
 
         # --- Monthly rebalance: trim oversized positions ---
@@ -192,7 +193,7 @@ class DailyRunner:
                     if excess_shares > 0:
                         self._submit_and_log(client, ticker, "sell", excess_shares, price,
                                               "Monthly rebalance: trimmed to max position size cap",
-                                              account.equity)
+                                              account.equity, category="rebalance_trim")
             state.last_rebalance_date = today.isoformat()
 
         # --- Entries ---
@@ -211,7 +212,7 @@ class DailyRunner:
             if shares <= 0:
                 continue
             self._submit_and_log(client, ticker, "buy", shares, price, signal_reason[ticker],
-                                  account.equity)
+                                  account.equity, category="buy")
             portfolio.cash -= shares * price  # keep local view consistent for subsequent iterations
 
         summary = self._daily_summary(account, portfolio)
@@ -223,22 +224,32 @@ class DailyRunner:
 
         return "\n".join(self.messages)
 
+    _CATEGORY_LABELS = {
+        "buy": ("🟢", "BUY"),
+        "stop_loss": ("🛑", "STOP-LOSS SELL"),
+        "scale_out": ("💰", "PROFIT-TAKE SELL"),
+        "signal_exit": ("🔵", "SIGNAL EXIT SELL"),
+        "rebalance_trim": ("⚖️", "REBALANCE TRIM"),
+    }
+
     def _submit_and_log(self, client: AlpacaClient, ticker: str, side: str, shares: float,
-                         price: float, reason: str, equity: float) -> None:
+                         price: float, reason: str, equity: float, category: str) -> None:
         if self.live:
             client.submit_market_order(ticker, shares, side)
-        prefix = "" if self.live else "[DRY RUN] "
-        self._note(f"{prefix}{side.upper()} {shares} {ticker} @ ~${price:.2f} — {reason}")
+        emoji, label = self._CATEGORY_LABELS.get(category, ("⚪", side.upper()))
+        prefix = "" if self.live else "🧪 [DRY RUN] "
+        self._note(f"{prefix}{emoji} {label}: {shares:g} {ticker} @ ~${price:.2f}\n   {reason}")
         log_trade(ticker, datetime.now(timezone.utc).date().isoformat(), side, shares, price,
                    reason, equity)
 
     def _daily_summary(self, account: AccountSnapshot, portfolio: PortfolioState) -> str:
         lines = [
-            f"Equity: ${account.equity:,.2f} | Cash: ${account.cash:,.2f}",
-            f"Open positions: {len(portfolio.positions)}/{CONFIG.portfolio.target_positions_max}",
+            "📅 DAILY SUMMARY",
+            f"💰 Equity: ${account.equity:,.2f}  |  💵 Cash: ${account.cash:,.2f}",
+            f"📈 Open positions: {len(portfolio.positions)}/{CONFIG.portfolio.target_positions_max}",
         ]
         if portfolio.trading_paused:
-            lines.append("Status: PAUSED")
+            lines.append("⏸️ Status: PAUSED")
         return "\n".join(lines)
 
     async def _send_telegram_summary(self) -> None:
