@@ -25,8 +25,11 @@ def main() -> int:
     live = os.getenv("LIVE_TRADING_ENABLED", "false").strip().lower() == "true"
     print(f"=== Daily run starting (live={live}) ===")
     try:
-        summary = run_once(live=live)
-        print(summary)
+        # run_once() already prints every line in real time via its internal
+        # _note() calls — its return value is that same log, joined into one
+        # string for callers who want it programmatically (e.g. the test
+        # harness). Printing it again here would just echo the run twice.
+        run_once(live=live)
         print("=== Daily run completed ===")
         return 0
     except AlpacaNotConfiguredError as e:
