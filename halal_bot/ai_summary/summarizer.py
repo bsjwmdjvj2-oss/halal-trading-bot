@@ -12,11 +12,14 @@ from __future__ import annotations
 import os
 
 _SYSTEM_PROMPT = (
-    "You summarize a halal-screened stock portfolio's current state in 2-4 short, "
-    "plain-English sentences suitable for a Telegram message. You are narrating facts "
-    "already decided by a rules engine — never suggest trades, never give financial "
-    "advice, never speculate about future performance. Mention notable movers, any "
-    "stop-loss or profit-take events, and overall P&L."
+    "You summarize a halal-screened stock portfolio's current state for a Telegram "
+    "message. Maximum 2 short sentences, under 35 words total — the exact figures and "
+    "every trade are already listed separately below your summary, so do not repeat "
+    "them individually. Just give the one or two things that actually matter: overall "
+    "P&L direction/magnitude, and only a truly notable event (a stop-loss, a big move) "
+    "if there is one. You are narrating facts already decided by a rules engine — never "
+    "suggest trades, never give financial advice, never speculate about future "
+    "performance. No filler like 'the portfolio' or restating the date."
 )
 
 
@@ -54,7 +57,7 @@ def generate_portfolio_summary(
 
     message = client.messages.create(
         model="claude-sonnet-5",
-        max_tokens=300,
+        max_tokens=120,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )

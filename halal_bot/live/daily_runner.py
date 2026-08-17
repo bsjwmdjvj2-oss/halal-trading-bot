@@ -181,6 +181,8 @@ class DailyRunner:
                 pnl = (price - pos.entry_price) * pos.shares
                 self._submit_and_log(client, ticker, "sell", pos.shares, price, decision.reason,
                                       account.equity, category="stop_loss", pnl=pnl)
+                portfolio.cash += pos.shares * price
+                del portfolio.positions[ticker]
                 state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
                 continue
 
@@ -189,6 +191,8 @@ class DailyRunner:
                 self._submit_and_log(client, ticker, "sell", decision.shares, price,
                                       decision.reason, account.equity, category="scale_out",
                                       pnl=pnl)
+                portfolio.cash += decision.shares * price
+                pos.shares -= decision.shares
                 if ticker not in state.scaled_out_tickers:
                     state.scaled_out_tickers.append(ticker)
 
@@ -206,6 +210,9 @@ class DailyRunner:
                     self._submit_and_log(client, ticker, "sell", remaining, price,
                                           signal_reason[ticker], account.equity,
                                           category="signal_exit", pnl=pnl)
+                    portfolio.cash += remaining * price
+                    if ticker in portfolio.positions:
+                        del portfolio.positions[ticker]
                 state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
 
         # --- Monthly rebalance: trim oversized positions ---
@@ -223,6 +230,8 @@ class DailyRunner:
                         self._submit_and_log(client, ticker, "sell", excess_shares, price,
                                               "Monthly rebalance: trimmed to max position size cap",
                                               account.equity, category="rebalance_trim", pnl=pnl)
+                        portfolio.cash += excess_shares * price
+                        pos.shares -= excess_shares
             state.last_rebalance_date = today.isoformat()
 
         # --- Anchor allocation (SPEC.md Section 3): force-hold configured
