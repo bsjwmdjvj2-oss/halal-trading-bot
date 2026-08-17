@@ -95,6 +95,13 @@ Go to the **Tasks** tab.
 **Always-on Task** (Telegram bot):
 - Command: `/home/farisalmazrouei/TradingAlpaca/.venv/bin/python /home/farisalmazrouei/TradingAlpaca/scripts/run_telegram_bot.py`
 
+**Scheduled Task** (quarterly research — optional, needs `ANTHROPIC_API_KEY`):
+- Command: `/home/farisalmazrouei/TradingAlpaca/.venv/bin/python /home/farisalmazrouei/TradingAlpaca/scripts/run_quarterly_research.py`
+- Time: any time, once/day — PythonAnywhere has no native "quarterly" cadence,
+  so the script itself checks internally and no-ops on all but ~1 day every
+  90 days (same pattern as the daily job's monthly re-screen check). A daily
+  Scheduled Task is the mechanism; the actual cadence is enforced in code.
+
 Using the venv's own `python` (full path) avoids needing to `source activate`
 inside the task, since PythonAnywhere tasks don't run your shell profile.
 

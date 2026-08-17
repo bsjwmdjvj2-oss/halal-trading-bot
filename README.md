@@ -19,6 +19,10 @@ See `SPEC.md` (the original build spec) for full requirements.
    `ANTHROPIC_API_KEY` is set; degrades silently to a deterministic summary without one
 10. ✅ P&L dashboard (`halal_bot/dashboard/`) — win rate, max drawdown, Sharpe, daily/weekly/
     monthly P&L from real trade history, via `scripts/generate_dashboard.py` or `/dashboard`
+11. ✅ Quarterly research agent (`halal_bot/research/`, SPEC.md Section 6) — Claude +
+    web search proposes new watchlist candidates and flags qualitative halal-compliance
+    concerns the ratio screen can't catch. Advisory only — never edits `watchlist.yaml`.
+    Runs via `scripts/run_quarterly_research.py`, needs `ANTHROPIC_API_KEY`.
 
 ## Setup
 
