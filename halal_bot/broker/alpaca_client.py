@@ -60,6 +60,22 @@ class AlpacaClient:
             },
         )
 
+    def get_open_order_symbols(self) -> set[str]:
+        """Symbols with a currently open (unfilled) order.
+
+        A market order shows up here immediately on submission — well before
+        it fills and appears in get_account_snapshot().positions. Checking
+        this in addition to positions is what actually prevents a double-buy
+        if the daily job is ever invoked twice in quick succession (manual
+        re-run, overlapping scheduled runs): positions alone can't detect an
+        order that's still in flight.
+        """
+        from alpaca.trading.enums import QueryOrderStatus
+        from alpaca.trading.requests import GetOrdersRequest
+
+        orders = self._client.get_orders(filter=GetOrdersRequest(status=QueryOrderStatus.OPEN))
+        return {o.symbol for o in orders}
+
     def submit_market_order(self, ticker: str, qty: float, side: str) -> str:
         """side: 'buy' | 'sell'. Returns the Alpaca order id."""
         from alpaca.trading.enums import OrderSide, TimeInForce

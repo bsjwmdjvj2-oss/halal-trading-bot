@@ -84,6 +84,13 @@ class DailyRunner:
         client = AlpacaClient()  # raises AlpacaNotConfiguredError if .env is missing
         account = client.get_account_snapshot()
 
+        # Guards against double-buying if this job is ever invoked twice in
+        # quick succession (manual re-run, overlapping scheduled runs) before
+        # the first run's order has filled — positions alone can't catch
+        # that, since a just-submitted market order doesn't appear as a
+        # position until it fills, but it does appear here immediately.
+        open_order_symbols = client.get_open_order_symbols() if self.live else set()
+
         # Drop scale-out bookkeeping for anything we no longer actually hold
         # (e.g. a crash after order submit but before save_state last run).
         state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t in account.positions]
@@ -222,10 +229,11 @@ class DailyRunner:
         # anchor ETFs at the standard position size, independent of the
         # technical signal — mirrors halal_bot.backtest.engine exactly.
         # Re-buys automatically if ever stopped out, since "not currently
-        # held" is the only gate.
+        # held" is the only gate (plus the open-order check below, which is
+        # what actually prevents a double-buy on a same-day re-run).
         for ticker in CONFIG.portfolio.anchor_etf_tickers[:CONFIG.portfolio.anchor_etf_slots]:
             if (ticker not in state.compliant_universe or ticker in portfolio.positions
-                    or ticker not in latest_price):
+                    or ticker in open_order_symbols or ticker not in latest_price):
                 continue
             price = latest_price[ticker]
             sector = state.sector_map.get(ticker, "Unknown")
@@ -243,7 +251,8 @@ class DailyRunner:
 
         # --- Entries ---
         for ticker in sorted(state.compliant_universe):
-            if ticker in portfolio.positions or ticker not in latest_price:
+            if (ticker in portfolio.positions or ticker in open_order_symbols
+                    or ticker not in latest_price):
                 continue
             if not entry_signal.get(ticker):
                 continue
