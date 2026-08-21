@@ -65,7 +65,7 @@ def default_status_fn() -> str:
             pct = (unrealized / cost_basis * 100) if cost_basis else 0.0
             arrow = "🟢" if unrealized >= 0 else "🔴"
             lines.append(
-                f"{arrow} {ticker}: {p['qty']:g} sh · ${p['market_value']:,.2f} "
+                f"{arrow} {ticker}: {p['qty']:.2f} sh · ${p['market_value']:,.2f} "
                 f"· {unrealized:+,.2f} ({pct:+.1f}%)"
             )
     else:
