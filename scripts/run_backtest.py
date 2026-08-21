@@ -65,6 +65,10 @@ def main():
                          help="Skip AAOIFI screening, backtest the full watchlist as-is")
     parser.add_argument("--no-cache", action="store_true",
                          help="Force re-download of price history instead of using data/price_cache")
+    parser.add_argument("--starting-capital", type=float, default=None,
+                         help="Override CONFIG.backtest.starting_capital (default $20,000)")
+    parser.add_argument("--monthly-contribution", type=float, default=0.0,
+                         help="Simulate a recurring monthly cash deposit (DCA-style)")
     args = parser.parse_args()
 
     universe, sector_map, caveats = build_compliant_universe(args.skip_screening)
@@ -82,8 +86,8 @@ def main():
     print(f"  Got price history for {len(price_data)}/{len(universe)} tickers.")
 
     print("\nRunning backtest simulation...")
-    engine = BacktestEngine(price_data, sector_map)
-    result = engine.run()
+    engine = BacktestEngine(price_data, sector_map, monthly_contribution=args.monthly_contribution)
+    result = engine.run(starting_capital=args.starting_capital)
 
     print_summary(result, list(price_data.keys()), caveats)
     run_dir = write_report(result, list(price_data.keys()), caveats)

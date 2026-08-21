@@ -32,6 +32,7 @@ def write_report(result: BacktestResult, universe: list[str], data_caveats: list
         "universe": universe,
         "num_trading_days": len(result.equity_curve),
         "metrics": asdict(result.metrics) if result.metrics else None,
+        "total_contributed": result.total_contributed,
         "data_caveats": data_caveats,
     }
     with open(run_dir / "summary.json", "w") as f:
@@ -62,6 +63,15 @@ def print_summary(result: BacktestResult, universe: list[str], data_caveats: lis
         print(f"Max drawdown:      {m.max_drawdown_pct:.2f}%")
         print(f"Sharpe-like ratio: {m.sharpe_ratio:.2f}")
         print(f"Win rate:          {m.win_rate_pct:.1f}% ({m.num_winning_trades}/{m.num_trades} closed trades)")
+        if result.total_contributed:
+            start_equity = result.equity_curve.iloc[0]
+            end_equity = result.equity_curve.iloc[-1]
+            net_trading_gain = end_equity - start_equity - result.total_contributed
+            print(f"\n(Total return/CAGR above include deposited cash, not just trading gains)")
+            print(f"Starting capital:  ${start_equity:,.2f}")
+            print(f"Total contributed: ${result.total_contributed:,.2f}")
+            print(f"Ending equity:     ${end_equity:,.2f}")
+            print(f"Net trading gain/loss (ending equity - start - contributions): ${net_trading_gain:+,.2f}")
     else:
         print("No metrics computed (insufficient data).")
     print(f"Total trade log entries: {len(result.trades)}")

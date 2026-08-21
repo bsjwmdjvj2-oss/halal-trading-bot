@@ -52,12 +52,14 @@ class BacktestResult:
     equity_curve: pd.Series
     trades: list[Trade] = field(default_factory=list)
     metrics: BacktestMetrics | None = None
+    total_contributed: float = 0.0
 
 
 class BacktestEngine:
     def __init__(self, price_data: dict[str, pd.DataFrame], sector_map: dict[str, str],
                  adx_filter: bool = False, macd_filter: bool = True,
-                 vol_sizing: bool = False, trailing_stop: bool = False):
+                 vol_sizing: bool = False, trailing_stop: bool = False,
+                 monthly_contribution: float = 0.0):
         """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant).
         adx_filter, macd_filter: forwarded to generate_signals() — see its docstring.
         vol_sizing, trailing_stop: ATR-based position sizing / ATR-scaled
@@ -70,10 +72,18 @@ class BacktestEngine:
         pullbacks well before the death-cross exit would ever fire, and gets
         whipsawed hardest during the same broad pullbacks it was meant to
         protect against. Kept as a documented dead end (same status as
-        adx_filter) — both default False and should stay that way."""
+        adx_filter) — both default False and should stay that way.
+        monthly_contribution (opt-in, default 0.0 = unchanged): added to cash
+        on the same ~monthly cadence as the position-size rebalance. Note
+        this makes the engine's own total_return_pct/cagr_pct (equity start
+        vs end) overstate trading performance, since part of the equity
+        growth is just deposited cash, not gains — see BacktestResult.
+        total_contributed and halal_bot.backtest.report's net-trading-gain
+        line for the contribution-adjusted figure."""
         self.sector_map = sector_map
         self.vol_sizing = vol_sizing
         self.trailing_stop = trailing_stop
+        self.monthly_contribution = monthly_contribution
         self.signals = {t: generate_signals(df, adx_filter=adx_filter, macd_filter=macd_filter)
                          for t, df in price_data.items() if not df.empty}
         self.master_dates = sorted(set().union(*[df.index for df in self.signals.values()]))
@@ -128,19 +138,21 @@ class BacktestEngine:
             if not pd.isna(self.close_ff[t][date])
         }
 
-    def run(self, start_date=None, end_date=None) -> BacktestResult:
+    def run(self, start_date=None, end_date=None, starting_capital: float | None = None) -> BacktestResult:
         """start_date/end_date (optional): restrict simulated trading + equity
         tracking to this date range, while indicators still see the full
         price history for warm-up (SMA/RSI are backward-looking only, so
         this introduces no lookahead). Used for train/test out-of-sample
         splits without re-fetching or re-warming indicators per split.
+        starting_capital (optional): overrides CONFIG.backtest.starting_capital.
         """
         cfg = CONFIG.backtest
         slippage = cfg.slippage_bps / 10_000
 
-        portfolio = PortfolioState(cash=cfg.starting_capital)
+        portfolio = PortfolioState(cash=starting_capital if starting_capital is not None else cfg.starting_capital)
         trades: list[Trade] = []
         equity_points: list[tuple] = []
+        total_contributed = 0.0
         was_paused = False
 
         trading_dates = [
@@ -210,6 +222,15 @@ class BacktestEngine:
                     trades.append(Trade(str(date.date()), ticker, "signal_exit", pos.shares,
                                          sell_price, pnl, self.reason_native[ticker].get(date, "")))
                     del portfolio.positions[ticker]
+
+            # --- Monthly contribution (opt-in, default 0.0): deposited cash,
+            # same cadence as the rebalance check below. Recorded separately
+            # so equity growth from deposits doesn't get read as trading gain.
+            if self.monthly_contribution and i % REBALANCE_INTERVAL_TRADING_DAYS == 0 and i > 0:
+                portfolio.cash += self.monthly_contribution
+                total_contributed += self.monthly_contribution
+                trades.append(Trade(str(date.date()), "CASH", "contribution", 0, 0,
+                                     reason=f"Monthly contribution +${self.monthly_contribution:,.0f}"))
 
             # --- Monthly rebalance: trim oversized positions ---
             if i % REBALANCE_INTERVAL_TRADING_DAYS == 0 and i > 0:
@@ -297,4 +318,5 @@ class BacktestEngine:
         closed_pnls = [t.pnl for t in trades if t.pnl is not None]
         metrics = compute_metrics(equity_curve, closed_pnls) if len(equity_curve) > 1 else None
 
-        return BacktestResult(equity_curve=equity_curve, trades=trades, metrics=metrics)
+        return BacktestResult(equity_curve=equity_curve, trades=trades, metrics=metrics,
+                               total_contributed=total_contributed)
