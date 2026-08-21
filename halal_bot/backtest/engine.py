@@ -60,7 +60,7 @@ class BacktestEngine:
                  adx_filter: bool = False, macd_filter: bool = True,
                  vol_sizing: bool = False, trailing_stop: bool = False,
                  monthly_contribution: float = 0.0, rank_entries: bool = False,
-                 rank_entries_by_macd: bool = False):
+                 rank_entries_by_macd: bool = False, min_hold_days: int = 0):
         """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant).
         adx_filter, macd_filter: forwarded to generate_signals() — see its docstring.
         vol_sizing, trailing_stop: ATR-based position sizing / ATR-scaled
@@ -123,13 +123,38 @@ class BacktestEngine:
         crossers courts exactly the sharper pullback the worse drawdown
         numbers show, and it only paid off in the test window's strongly
         trending stretch. Kept as a documented dead end, not a live
-        option, default off."""
+        option, default off.
+
+        min_hold_days (opt-in, default 0 = unchanged): suppresses the
+        signal exit (death cross) until a position has been held at least
+        this many *calendar* days — stop-loss and profit-take in
+        halal_bot.risk are untouched by this, on purpose: capital
+        protection should never wait on a hold-period rule, only the
+        trend-following exit does. Hypothesis was that a death cross
+        firing within days of entry is more likely ordinary noise than a
+        real reversal, and exiting into it churns a position too early.
+
+        Backtested and REJECTED on the same 3-year train/test split
+        (2/3-1/3), swept over 3/5/7/10-day holds: max drawdown got WORSE
+        at every hold length in every window (full -17.2% -> -17.5% to
+        -20.5%) -- same failure mode as trailing_stop, delaying the exit
+        just rides out more downside before finally selling. Train-split
+        (2yr, in-sample) results lost on every metric at every hold length
+        tested, no exceptions. The apparent test-split (1yr, held-out)
+        improvement in CAGR/Sharpe/win-rate was identical between the
+        5-day and 7-day variants -- a strong sign it's a couple of
+        specific trades dodging one bad quick-exit in that one year, not a
+        repeatable effect. Best case (5 or 7 days) cleared only 6/12
+        checks and lost on drawdown regardless. Kept as a documented dead
+        end, same status as adx_filter/vol_sizing/trailing_stop/
+        rank_entries — not a live option, default off."""
         self.sector_map = sector_map
         self.vol_sizing = vol_sizing
         self.trailing_stop = trailing_stop
         self.monthly_contribution = monthly_contribution
         self.rank_entries = rank_entries
         self.rank_entries_by_macd = rank_entries_by_macd
+        self.min_hold_days = min_hold_days
         self.signals = {t: generate_signals(df, adx_filter=adx_filter, macd_filter=macd_filter)
                          for t, df in price_data.items() if not df.empty}
         self.master_dates = sorted(set().union(*[df.index for df in self.signals.values()]))
@@ -274,8 +299,13 @@ class BacktestEngine:
                 is_anchor = ticker in CONFIG.portfolio.anchor_etf_tickers[
                     :CONFIG.portfolio.anchor_etf_slots
                 ]
+                held_days = (
+                    (date.date() - pd.Timestamp(pos.entry_date).date()).days
+                    if pos.entry_date else 10**6
+                )
                 if (not is_anchor and ticker in self.exit_native
-                        and bool(self.exit_native[ticker].get(date, False))):
+                        and bool(self.exit_native[ticker].get(date, False))
+                        and held_days >= self.min_hold_days):
                     sell_price = price * (1 - slippage)
                     pnl = (sell_price - pos.entry_price) * pos.shares
                     portfolio.cash += pos.shares * sell_price
