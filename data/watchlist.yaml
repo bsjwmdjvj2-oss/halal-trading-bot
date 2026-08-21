@@ -51,6 +51,15 @@ stocks:
   - {ticker: TSM,   sector: Technology}
   - {ticker: ARM,   sector: Technology}
   - {ticker: PLTR,  sector: Technology}
+  - {ticker: ADI,   sector: Technology}
+  - {ticker: AMAT,  sector: Technology}
+  - {ticker: CIEN,  sector: Technology}
+  - {ticker: FN,    sector: Technology}
+  - {ticker: KEYS,  sector: Technology}
+  - {ticker: OKTA,  sector: Technology}
+  - {ticker: RBRK,  sector: Technology}
+  - {ticker: CSCO,  sector: Technology}
+  - {ticker: GOOG,  sector: Technology}
 
   # Communication Services
   - {ticker: META,  sector: Communication Services}
@@ -90,6 +99,7 @@ stocks:
   - {ticker: EL,    sector: Consumer Staples}
   - {ticker: MNST,  sector: Consumer Staples}
   - {ticker: KDP,   sector: Consumer Staples}
+  - {ticker: ANCTF, sector: Consumer Staples}
 
   # Healthcare
   - {ticker: LLY,   sector: Healthcare}
@@ -111,6 +121,7 @@ stocks:
   - {ticker: ZTS,   sector: Healthcare}
   - {ticker: EW,    sector: Healthcare}
   - {ticker: HCA,   sector: Healthcare}
+  - {ticker: SDMHF, sector: Healthcare}
 
   # Industrials (no defense/weapons manufacturers — excluded per screen)
   - {ticker: HON,   sector: Industrials}
@@ -129,6 +140,9 @@ stocks:
   - {ticker: CSX,   sector: Industrials}
   - {ticker: WM,    sector: Industrials}
   - {ticker: RSG,   sector: Industrials}
+  - {ticker: SNA,   sector: Industrials}
+  - {ticker: STRL,  sector: Industrials}
+  - {ticker: SMEGF, sector: Industrials}
 
   # Materials
   - {ticker: LIN,   sector: Materials}
@@ -148,6 +162,8 @@ stocks:
   - {ticker: PSX,   sector: Energy}
   - {ticker: MPC,   sector: Energy}
   - {ticker: OXY,   sector: Energy}
+  - {ticker: DVN,   sector: Energy}
+  - {ticker: VNOM,  sector: Energy}
 
   # Payments (fee-based processors, not direct interest-bearing lenders —
   # ratio screen decides eligibility; flag for extra scrutiny)
