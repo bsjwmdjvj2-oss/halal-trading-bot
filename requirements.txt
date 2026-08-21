@@ -13,3 +13,6 @@ pandas-ta>=0.4.67b0  # PyPI only has pre-releases (0.4.6xb0/0.4.7xb0) — the b0
 alpaca-py>=0.30
 python-telegram-bot>=21.0
 anthropic>=0.40
+
+# Halal Terminal (quarterly research cross-check) — direct REST calls
+httpx>=0.27

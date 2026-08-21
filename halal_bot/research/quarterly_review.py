@@ -12,13 +12,15 @@ file editing, so the lighter-weight surface is the right fit.
 from __future__ import annotations
 
 from halal_bot.config import CONFIG
+from halal_bot.logging_utils import log_event
+from halal_bot.research.tipranks_context import format_context, load_snapshot
 from halal_bot.screening.watchlist import Instrument, load_watchlist
 
 MODEL = "claude-opus-5"
 MAX_TOOL_ROUNDS = 4  # each round can hit the server's own 10-search-iteration cap
 
 
-def _build_prompt(instruments: list[Instrument]) -> str:
+def _build_prompt(instruments: list[Instrument], tipranks_context: str = "") -> str:
     cfg = CONFIG.screening
     by_sector: dict[str, list[str]] = {}
     for i in instruments:
@@ -27,6 +29,7 @@ def _build_prompt(instruments: list[Instrument]) -> str:
         f"  {sector}: {', '.join(sorted(tickers))}" for sector, tickers in sorted(by_sector.items())
     )
     anchors = ", ".join(CONFIG.portfolio.anchor_etf_tickers)
+    tipranks_section = f"\n{tipranks_context}\n" if tipranks_context else ""
 
     return f"""We run a halal-screened growth stock portfolio. The current candidate
 watchlist ({len(instruments)} tickers, business-activity pre-screened) is:
@@ -41,17 +44,21 @@ ever eligible for the portfolio:
   - Excluded sectors: {", ".join(cfg.excluded_sectors)}
 
 We always hold two anchor ETFs regardless of signal: {anchors}.
-
+{tipranks_section}
 You have two tasks. This is research for a human to review -- do not present
 either as a final decision; the human decides whether to add anything to the
 watchlist or flag a holding for the next compliance re-screen.
 
 1. CANDIDATE DISCOVERY: propose 5-10 US-listed growth stocks NOT already in
-   the watchlist above, spread across sectors we're currently light on.
-   For each: 1-2 sentence business rationale, and flag anything from your
-   research suggesting it might fail the quantitative ratios above (e.g.
-   high leverage) or the excluded-sector list -- we'd rather know before
-   spending API calls screening it.
+   the watchlist above, spread across sectors we're currently light on. If
+   the TipRanks data above lists names that already passed the ratio
+   screen, prioritize researching those first -- they've already cleared
+   the quantitative bar, so your job is the business rationale and sector
+   fit, not re-checking numbers you already have. For each: 1-2 sentence
+   business rationale, and flag anything from your research suggesting it
+   might fail the quantitative ratios above (e.g. high leverage) or the
+   excluded-sector list -- we'd rather know before spending API calls
+   screening it.
 
 2. COMPLIANCE RESEARCH: the quantitative ratio screen can't catch
    qualitative issues -- a business pivot, new subsidiary, M&A into a
@@ -78,7 +85,20 @@ def run_quarterly_review() -> str:
 
     client = Anthropic()
     instruments = load_watchlist()
-    prompt = _build_prompt(instruments)
+
+    tipranks_context = ""
+    snapshot = load_snapshot()
+    if snapshot is not None:
+        halal_client = None
+        if CONFIG.halal_terminal.api_key:
+            from halal_bot.screening.halal_terminal_client import HalalTerminalClient
+            try:
+                halal_client = HalalTerminalClient()
+            except Exception as e:
+                log_event("halal_terminal_unavailable", str(e))
+        tipranks_context = format_context(snapshot, instruments, halal_client=halal_client)
+
+    prompt = _build_prompt(instruments, tipranks_context)
 
     messages = [{"role": "user", "content": prompt}]
     tools = [

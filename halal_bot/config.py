@@ -71,6 +71,19 @@ class RiskConfig:
     drawdown_pause_pct: float = 0.175        # pause new entries at 15-20% off peak
     max_sector_concentration_pct: float = 0.325  # ~30-35% max per sector
 
+    # Volatility-adaptive risk (ATR-based position sizing + ATR-scaled
+    # trailing stop). Backtested and REJECTED on a 3-year train/test split —
+    # both variants, and combined, lost on CAGR/Sharpe/drawdown/win-rate in
+    # every window vs the fixed-sizing/fixed-stop baseline (see
+    # BacktestEngine(vol_sizing=, trailing_stop=) docstring). Kept as a
+    # documented dead end — same status as adx_filter — not a live option.
+    atr_period: int = 14
+    vol_sizing_reference_atr_pct: float = 0.025  # "normal" daily ATR as % of price
+    vol_sizing_floor_mult: float = 0.5           # never size below 50% of the normal cap
+    trailing_stop_atr_multiple: float = 3.0      # trail distance = N x ATR%, off the peak since entry
+    trailing_stop_floor_pct: float = 0.10        # never trail tighter than 10%
+    trailing_stop_ceiling_pct: float = 0.25      # never trail looser than 25%
+
 
 @dataclass(frozen=True)
 class BacktestConfig:
@@ -88,6 +101,18 @@ class AlpacaConfig:
 
 
 @dataclass(frozen=True)
+class HalalTerminalConfig:
+    """Professional multi-methodology Shariah screening (AAOIFI, DJIM, FTSE,
+    MSCI, S&P) — used as a quarterly-research cross-check alongside this
+    bot's own internal ratio screen (halal_bot.screening.rules), not in the
+    live monthly re-screen (see halal_bot.screening.halal_terminal_client's
+    module docstring for why: token-metered API, budget doesn't cover
+    screening the full watchlist every month)."""
+    api_key: str = os.getenv("HT_API_KEY", "")
+    base_url: str = os.getenv("HT_API_BASE_URL", "https://api.halalterminal.com")
+
+
+@dataclass(frozen=True)
 class TelegramConfig:
     bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -101,6 +126,7 @@ class Config:
     risk: RiskConfig = field(default_factory=RiskConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     alpaca: AlpacaConfig = field(default_factory=AlpacaConfig)
+    halal_terminal: HalalTerminalConfig = field(default_factory=HalalTerminalConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     watchlist_path: Path = ROOT_DIR / "data" / "watchlist.yaml"
     log_dir: Path = ROOT_DIR / "logs"

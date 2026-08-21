@@ -95,7 +95,8 @@ Go to the **Tasks** tab.
 **Always-on Task** (Telegram bot):
 - Command: `/home/farisalmazrouei/TradingAlpaca/.venv/bin/python /home/farisalmazrouei/TradingAlpaca/scripts/run_telegram_bot.py`
 
-**Scheduled Task** (quarterly research — optional, needs `ANTHROPIC_API_KEY`):
+**Scheduled Task** (quarterly research — optional, needs `ANTHROPIC_API_KEY`;
+`HT_API_KEY` too if you want the Halal Terminal cross-check included):
 - Command: `/home/farisalmazrouei/TradingAlpaca/.venv/bin/python /home/farisalmazrouei/TradingAlpaca/scripts/run_quarterly_research.py`
 - Time: any time, once/day — PythonAnywhere has no native "quarterly" cadence,
   so the script itself checks internally and no-ops on all but ~1 day every
@@ -125,9 +126,11 @@ to your **paper** account, per Section 13 of SPEC.md. Keep it on paper for
 - **Files tab** → `logs/signals_*.jsonl`, `logs/trades_*.jsonl`,
   `logs/screening_*.jsonl`, `logs/events_*.jsonl` — the full audit trail
   (SPEC.md Section 10).
-- **Telegram** → daily summary after each scheduled run, plus `/status` and
-  `/dashboard` (P&L, win rate, drawdown, Sharpe) on demand. Tap the "/"
-  menu button in the chat to see all commands.
+- **Telegram** → daily summary after each scheduled run, plus `/status`,
+  `/dashboard` (P&L, win rate, drawdown, Sharpe), and `/invest` (runs entries
+  right now instead of waiting for the next scheduled run — same signal/risk
+  checks, respects `LIVE_TRADING_ENABLED`) on demand. Tap the "/" menu button
+  in the chat to see all commands.
 
 ## Restart / outage safety
 
