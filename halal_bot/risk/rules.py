@@ -33,7 +33,12 @@ def max_positions_for_equity(equity: float) -> int:
 
 
 def position_size_shares(equity: float, price: float, size_multiplier: float = 1.0) -> float:
-    """Whole shares affordable within the max-position-size cap.
+    """Fractional shares affordable within the max-position-size cap (Alpaca
+    supports fractional-share market orders; rounded to 6 decimal places,
+    matching Alpaca's own fractional precision, to avoid floating-point
+    noise). Whole-share-only sizing used to mean a $300 account rounded down
+    to 0 shares for anything pricier than the ~$45 cap (e.g. SPUS at $58,
+    HLAL at $72) -- the forced anchor-ETF buy would silently never fire.
 
     size_multiplier (opt-in, default 1.0 = unchanged): scales the dollar cap
     down for volatility-based sizing (see volatility_size_multiplier) — never
@@ -42,7 +47,7 @@ def position_size_shares(equity: float, price: float, size_multiplier: float = 1
     if price <= 0:
         return 0.0
     dollars = max_position_dollars(equity) * min(size_multiplier, 1.0)
-    return float(int(dollars // price))
+    return round(dollars / price, 6)
 
 
 def volatility_size_multiplier(atr_pct: float | None) -> float:
@@ -112,7 +117,7 @@ def check_exit_risk(
         )
 
     if ret >= cfg.profit_take_trigger_pct and not position.scaled_out:
-        scale_shares = float(int(position.shares * cfg.profit_take_scale_out_pct))
+        scale_shares = round(position.shares * cfg.profit_take_scale_out_pct, 6)
         if scale_shares > 0:
             return RiskDecision(
                 action="scale_out",

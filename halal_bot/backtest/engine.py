@@ -34,6 +34,7 @@ from halal_bot.signals.indicators import atr_pct as compute_atr_pct
 from halal_bot.signals.strategy import generate_signals
 
 REBALANCE_INTERVAL_TRADING_DAYS = 21  # ~1 month
+MIN_ORDER_DOLLARS = 1.0  # matches Alpaca's real fractional-order minimum
 
 
 @dataclass
@@ -332,7 +333,7 @@ class BacktestEngine:
                     price = prices[ticker]
                     value = pos.market_value(price)
                     if value > cap_dollars:
-                        excess_shares = float(int((value - cap_dollars) / price))
+                        excess_shares = round((value - cap_dollars) / price, 6)
                         if excess_shares > 0:
                             sell_price = price * (1 - slippage)
                             pnl = (sell_price - pos.entry_price) * excess_shares
@@ -363,7 +364,7 @@ class BacktestEngine:
                 size_mult = self._size_multiplier(ticker, date)
                 shares = position_size_shares(equity, buy_price, size_multiplier=size_mult)
                 cost = shares * buy_price
-                if shares <= 0 or cost > portfolio.cash:
+                if cost < MIN_ORDER_DOLLARS or cost > portfolio.cash:
                     continue
                 portfolio.cash -= cost
                 portfolio.positions[ticker] = Position(
@@ -403,7 +404,7 @@ class BacktestEngine:
                 size_mult = self._size_multiplier(ticker, date)
                 shares = position_size_shares(equity, buy_price, size_multiplier=size_mult)
                 cost = shares * buy_price
-                if shares <= 0 or cost > portfolio.cash:
+                if cost < MIN_ORDER_DOLLARS or cost > portfolio.cash:
                     continue
                 portfolio.cash -= cost
                 portfolio.positions[ticker] = Position(

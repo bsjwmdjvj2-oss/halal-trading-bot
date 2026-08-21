@@ -41,6 +41,9 @@ from halal_bot.screening.watchlist import load_watchlist
 from halal_bot.signals.strategy import generate_signals
 
 
+MIN_ORDER_DOLLARS = 1.0  # Alpaca rejects fractional orders below $1 notional
+
+
 def _days_since(date_str: str | None, today: date) -> int:
     if date_str is None:
         return 10**6  # never run before -> always due
@@ -233,7 +236,7 @@ class DailyRunner:
                 price = latest_price[ticker]
                 value = pos.market_value(price)
                 if value > cap_dollars:
-                    excess_shares = float(int((value - cap_dollars) / price))
+                    excess_shares = round((value - cap_dollars) / price, 6)
                     if excess_shares > 0:
                         pnl = (price - pos.entry_price) * excess_shares
                         if self._submit_and_log(client, ticker, "sell", excess_shares, price,
@@ -259,7 +262,7 @@ class DailyRunner:
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
-            if shares <= 0 or shares * price > portfolio.cash:
+            if shares * price < MIN_ORDER_DOLLARS or shares * price > portfolio.cash:
                 continue
             if self._submit_and_log(client, ticker, "buy", shares, price,
                                      "Anchor allocation (forced, independent of signal)",
@@ -280,7 +283,7 @@ class DailyRunner:
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
-            if shares <= 0 or shares * price > portfolio.cash:
+            if shares * price < MIN_ORDER_DOLLARS or shares * price > portfolio.cash:
                 continue
             if self._submit_and_log(client, ticker, "buy", shares, price, signal_reason[ticker],
                                      account.equity, category="buy"):

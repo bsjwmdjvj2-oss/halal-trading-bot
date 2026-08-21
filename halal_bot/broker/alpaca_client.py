@@ -80,7 +80,10 @@ class AlpacaClient:
         return {o.symbol for o in orders}
 
     def submit_market_order(self, ticker: str, qty: float, side: str) -> str:
-        """side: 'buy' | 'sell'. Returns the Alpaca order id."""
+        """side: 'buy' | 'sell'. qty may be fractional -- Alpaca accepts a
+        fractional qty directly on market orders (time_in_force=DAY, already
+        the case here; fractional orders can't use GTC or extended hours,
+        neither of which this bot uses). Returns the Alpaca order id."""
         from alpaca.trading.enums import OrderSide, TimeInForce
         from alpaca.trading.requests import MarketOrderRequest
 
