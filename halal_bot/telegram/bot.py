@@ -175,6 +175,85 @@ def build_application(portfolio_status_fn=None):
             for i in range(0, len(summary), 4000):
                 await update.message.reply_text(summary[i:i + 4000])
 
+    dca_lock = asyncio.Lock()
+
+    async def dca_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Reference calculator only — never touches the live bot's own
+        position sizing (still 15%-of-equity, signal-triggered, unchanged).
+        Usage: /dca (uses current Alpaca cash balance) or /dca 500 (manual
+        override, e.g. to plan a hypothetical future contribution)."""
+        print("[telegram] /dca received")
+        if not _authorized(update):
+            return
+        amount: float
+        if context.args:
+            raw = context.args[0].replace("$", "").replace(",", "")
+            try:
+                amount = float(raw)
+            except ValueError:
+                await update.message.reply_text(f"Couldn't parse {context.args[0]!r} as a dollar amount.")
+                return
+            if amount <= 0:
+                await update.message.reply_text("Amount must be positive.")
+                return
+        else:
+            from halal_bot.broker.alpaca_client import AlpacaClient, AlpacaNotConfiguredError
+            try:
+                account = AlpacaClient().get_account_snapshot()
+            except AlpacaNotConfiguredError as e:
+                await update.message.reply_text(f"⚠️ CONFIG ERROR: {e}")
+                return
+            amount = account.cash
+            await update.message.reply_text(f"Using your current Alpaca cash balance: ${amount:,.2f}")
+
+        if dca_lock.locked():
+            await update.message.reply_text("⏳ Already running — try again once it finishes.")
+            return
+
+        async with dca_lock:
+            from halal_bot.live.state_store import load_state
+            from halal_bot.research.dca_calculator import pick_candidates, stocks_for_amount
+
+            state = load_state()
+            if not state.compliant_universe:
+                await update.message.reply_text(
+                    "No compliant universe cached yet — the bot needs to run its monthly "
+                    "re-screen at least once before /dca has anything to pick from."
+                )
+                return
+
+            count = stocks_for_amount(amount)
+            await update.message.reply_text(
+                f"💵 ${amount:,.0f} this month → {count} stocks. Checking today's signals..."
+            )
+            try:
+                picked, total_signaling = await asyncio.to_thread(pick_candidates, count, state)
+            except Exception as e:
+                log_event("dca_cmd_crashed", str(e))
+                await update.message.reply_text(f"⚠️ Run failed: {e}")
+                return
+
+            if not picked:
+                await update.message.reply_text(
+                    "No tickers have an active entry signal today — nothing to suggest "
+                    "right now. This is a planning tool, not a trade; it's fine for it to "
+                    "come back empty on a quiet day."
+                )
+                return
+
+            lines = [f"📋 {len(picked)} of {count} requested (spread across sectors):"]
+            for c in picked:
+                lines.append(f"  {c.ticker} ({c.sector}) — {c.reason}")
+            if len(picked) < count:
+                lines.append(
+                    f"\nOnly {total_signaling} ticker(s) have an active signal today, "
+                    f"fewer than the {count} the table suggests — showing what's real "
+                    "rather than padding the list."
+                )
+            text = "\n".join(lines)
+            for i in range(0, len(text), 4000):
+                await update.message.reply_text(text[i:i + 4000])
+
     async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("[telegram] /dashboard received")
         if not _authorized(update):
@@ -215,6 +294,7 @@ def build_application(portfolio_status_fn=None):
         await application.bot.set_my_commands([
             BotCommand("status", "Portfolio status & open positions"),
             BotCommand("invest", "Run entries now (cash -> today's picks)"),
+            BotCommand("dca", "DCA calculator: cash balance -> stocks to buy"),
             BotCommand("dashboard", "P&L, win rate, drawdown, Sharpe"),
             BotCommand("screening", "Halal screen: who passed/failed & why"),
             BotCommand("pause", "Stop opening new positions"),
@@ -229,6 +309,7 @@ def build_application(portfolio_status_fn=None):
     )
     application.add_handler(CommandHandler("status", status_cmd))
     application.add_handler(CommandHandler("invest", invest_cmd))
+    application.add_handler(CommandHandler("dca", dca_cmd))
     application.add_handler(CommandHandler("dashboard", dashboard_cmd))
     application.add_handler(CommandHandler("screening", screening_cmd))
     application.add_handler(CommandHandler("pause", pause_cmd))
