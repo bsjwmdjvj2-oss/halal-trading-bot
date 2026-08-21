@@ -23,13 +23,40 @@ def max_position_dollars(equity: float) -> float:
     return equity * CONFIG.risk.max_position_size_pct
 
 
+# Diversification table (user-supplied): (min_inclusive, max_inclusive, position
+# count). Below $100: too little to meaningfully spread, defaults to 1. Above
+# $10,000: the table doesn't say, so this holds at the top tier's count (20)
+# rather than guessing an extrapolation. Shared verbatim with
+# halal_bot.research.dca_calculator.stocks_for_amount -- same table, same
+# math, whether the question is "how many positions can this account hold"
+# or "how many stocks should this month's contribution spread across".
+_POSITION_COUNT_TABLE: list[tuple[float, float, int]] = [
+    (100, 199, 2),
+    (200, 299, 3),
+    (300, 499, 4),
+    (500, 749, 5),
+    (750, 999, 6),
+    (1_000, 1_499, 8),
+    (1_500, 1_999, 10),
+    (2_000, 2_999, 12),
+    (3_000, 3_999, 14),
+    (4_000, 4_999, 16),
+    (5_000, 7_499, 18),
+    (7_500, 10_000, 20),
+]
+
+
 def max_positions_for_equity(equity: float) -> int:
-    """Concurrent-position cap, scaled down for small accounts so they
-    aren't spread across more simultaneous slices than their equity can
-    meaningfully support -- see PortfolioConfig.min_position_dollars."""
-    cfg = CONFIG.portfolio
-    scaled = int(equity // cfg.min_position_dollars)
-    return max(1, min(cfg.target_positions_max, scaled))
+    """Concurrent-position cap, strictly following the diversification table
+    above instead of a flat number -- a $20k+ account spreading across only
+    12 positions was leaving the table's own guidance on the table; a $300
+    account trying to hold 12 was the opposite problem."""
+    if equity < _POSITION_COUNT_TABLE[0][0]:
+        return 1
+    for lo, hi, count in _POSITION_COUNT_TABLE:
+        if lo <= equity <= hi:
+            return count
+    return _POSITION_COUNT_TABLE[-1][2]  # above $10,000 -- hold at the top tier
 
 
 def position_size_shares(equity: float, price: float, size_multiplier: float = 1.0) -> float:

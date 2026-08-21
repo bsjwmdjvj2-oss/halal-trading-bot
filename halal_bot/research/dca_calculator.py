@@ -1,13 +1,16 @@
 """Dollar-cost-averaging diversification calculator (Telegram /dca command).
 
-Purely a planning/reference tool — never touches the live daily bot's own
-position sizing (that stays 15%-of-equity, signal-triggered, unchanged).
-Given a monthly contribution amount, looks up how many separate stocks a
-standard DCA-diversification table says to spread it across, then lists
-that many real candidates: tickers in the current halal-compliant universe
-whose technical entry signal is actually active today, spread across
-sectors before repeating one twice (the same diversification instinct the
-stock-count table itself is built on).
+Given a monthly contribution amount, looks up how many separate stocks the
+diversification table (halal_bot.risk.rules._POSITION_COUNT_TABLE -- the
+same table the live bot's own max_positions_for_equity uses for its
+concurrent-position cap) says to spread it across, then lists that many
+real candidates: tickers in the current halal-compliant universe whose
+technical entry signal is actually active today, spread across sectors
+before repeating one twice.
+
+Note this is a planning/reference tool for a *contribution* amount, distinct
+from the live bot's per-position dollar sizing (still 15%-of-equity,
+signal-triggered, unaffected by this file either way).
 """
 from __future__ import annotations
 
@@ -15,35 +18,12 @@ from dataclasses import dataclass
 
 from halal_bot.data.prices import fetch_history
 from halal_bot.live.state_store import LiveState
+from halal_bot.risk.rules import max_positions_for_equity
 from halal_bot.signals.strategy import generate_signals
-
-# (min_inclusive, max_inclusive, stock_count) — user-supplied DCA
-# diversification table. Below $100: too little to meaningfully spread,
-# defaults to 1. Above $10,000: the table doesn't say, so this holds at the
-# top tier's count (20) rather than guessing an extrapolation.
-_STOCK_COUNT_TABLE: list[tuple[float, float, int]] = [
-    (100, 199, 2),
-    (200, 299, 3),
-    (300, 499, 4),
-    (500, 749, 5),
-    (750, 999, 6),
-    (1_000, 1_499, 8),
-    (1_500, 1_999, 10),
-    (2_000, 2_999, 12),
-    (3_000, 3_999, 14),
-    (4_000, 4_999, 16),
-    (5_000, 7_499, 18),
-    (7_500, 10_000, 20),
-]
 
 
 def stocks_for_amount(amount: float) -> int:
-    if amount < _STOCK_COUNT_TABLE[0][0]:
-        return 1
-    for lo, hi, count in _STOCK_COUNT_TABLE:
-        if lo <= amount <= hi:
-            return count
-    return _STOCK_COUNT_TABLE[-1][2]  # above $10,000 -- hold at the top tier
+    return max_positions_for_equity(amount)
 
 
 @dataclass
