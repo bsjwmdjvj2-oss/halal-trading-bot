@@ -140,9 +140,15 @@ def format_context(snapshot: dict, watchlist: list[Instrument], halal_client=Non
                     continue
                 status = "COMPLIANT" if v.compliant else "NON-COMPLIANT"
                 agree = "agrees" if v.compliant else "DISAGREES — flag for review"
-                methods = ", ".join(
-                    f"{m}={'Y' if ok else 'N'}" for m, ok in v.methodology_summary.items()
-                )
+                if v.methodology_summary:
+                    methods = ", ".join(
+                        f"{m}={'Y' if ok else 'N'}" for m, ok in v.methodology_summary.items()
+                    )
+                else:
+                    # No per-methodology breakdown at all -- Halal Terminal
+                    # short-circuits ratio screening when the business
+                    # activity screen itself already fails.
+                    methods = "failed business-activity screen (no ratio breakdown run)"
                 lines.append(f"  {ticker}: {status} ({agree}) — {methods}")
             disclaimer = next((v.disclaimer for v in verdicts.values() if v.disclaimer), "")
             if disclaimer:

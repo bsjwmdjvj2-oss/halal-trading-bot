@@ -78,9 +78,13 @@ class HalalTerminalClient:
         return ScreenVerdict(
             ticker=data.get("symbol", ticker),
             is_compliant=bool(data.get("is_compliant", False)),
-            methodology_summary=data.get("methodology_summary", {}),
+            # "or {}" not a plain default: when a ticker fails the business-
+            # activity screen, Halal Terminal returns this key present but
+            # explicitly null (ratios were never computed), not omitted --
+            # dict.get(key, {}) doesn't catch that, since the key exists.
+            methodology_summary=data.get("methodology_summary") or {},
             purification_rate=data.get("purification_rate"),
-            explanation=data.get("compliance_explanation", ""),
+            explanation=data.get("compliance_explanation") or "",
             disclaimer=religious_disclaimer,
         )
 
