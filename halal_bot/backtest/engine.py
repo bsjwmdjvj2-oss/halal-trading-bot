@@ -59,7 +59,8 @@ class BacktestEngine:
     def __init__(self, price_data: dict[str, pd.DataFrame], sector_map: dict[str, str],
                  adx_filter: bool = False, macd_filter: bool = True,
                  vol_sizing: bool = False, trailing_stop: bool = False,
-                 monthly_contribution: float = 0.0):
+                 monthly_contribution: float = 0.0, rank_entries: bool = False,
+                 rank_entries_by_macd: bool = False):
         """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant).
         adx_filter, macd_filter: forwarded to generate_signals() — see its docstring.
         vol_sizing, trailing_stop: ATR-based position sizing / ATR-scaled
@@ -79,11 +80,56 @@ class BacktestEngine:
         vs end) overstate trading performance, since part of the equity
         growth is just deposited cash, not gains — see BacktestResult.
         total_contributed and halal_bot.backtest.report's net-trading-gain
-        line for the contribution-adjusted figure."""
+        line for the contribution-adjusted figure.
+        rank_entries (opt-in, default False = unchanged): when multiple
+        tickers signal entry on the same day and there are fewer open
+        position slots than candidates, fill slots by descending
+        volume_ratio (today's volume vs its 20d average — see
+        halal_bot.signals.strategy) instead of alphabetical ticker order.
+        Only changes *which* already-qualified signals get taken on a
+        collision day, not the entry/exit signal logic itself.
+
+        Backtested and REJECTED on the same 3-year train/test split used for
+        macd_filter/adx_filter — ranked lost on CAGR/Sharpe/max-drawdown/
+        win-rate in both the full sample and the train split (e.g. full-
+        sample Sharpe 1.52 -> 1.27, win rate 66.7% -> 62.0%), and was an
+        exact no-op on the held-out test split (that year never had a
+        collision day — never more same-day signals than open slots — so
+        ranking had nothing to reorder). 0/12 metric-window checks favored
+        it. Likely cause: every candidate has already cleared the same four
+        entry gates, so reordering them adds no information — and the
+        biggest one-day volume_ratio spikes skew toward news-driven gap
+        events, which are more likely to mean-revert than a clean breakout
+        is. Kept as a documented dead end, same status as adx_filter/
+        vol_sizing/trailing_stop — not a live option, default off.
+
+        rank_entries_by_macd (opt-in, default False = unchanged): same
+        collision-day mechanism as rank_entries, but ranks candidates by
+        descending macd_strength (macd_hist / Close, see
+        halal_bot.signals.strategy) instead of volume_ratio. Mutually
+        exclusive with rank_entries in effect: if both are True, this one
+        wins.
+
+        Backtested and REJECTED on the same split — only won 2/12
+        metric-window checks (CAGR/Sharpe on the held-out test split alone),
+        and lost badly everywhere else: train-split Sharpe roughly halved
+        (1.26 -> 0.81), and max drawdown got worse in every window
+        (full -17.2% -> -20.7%, test -5.4% -> -6.7%). A single test-split
+        win with in-sample (train) performance this much worse isn't
+        adoptable by this project's bar (full+train+test, like macd_filter
+        cleared). Likely cause: ranking by *how far* MACD has already
+        separated favors tickers already deep into a momentum run over
+        fresher breakouts — buying the most extended mover among today's
+        crossers courts exactly the sharper pullback the worse drawdown
+        numbers show, and it only paid off in the test window's strongly
+        trending stretch. Kept as a documented dead end, not a live
+        option, default off."""
         self.sector_map = sector_map
         self.vol_sizing = vol_sizing
         self.trailing_stop = trailing_stop
         self.monthly_contribution = monthly_contribution
+        self.rank_entries = rank_entries
+        self.rank_entries_by_macd = rank_entries_by_macd
         self.signals = {t: generate_signals(df, adx_filter=adx_filter, macd_filter=macd_filter)
                          for t, df in price_data.items() if not df.empty}
         self.master_dates = sorted(set().union(*[df.index for df in self.signals.values()]))
@@ -103,6 +149,20 @@ class BacktestEngine:
             t: df["signal_reason"].reindex(self.master_dates, fill_value="")
             for t, df in self.signals.items()
         }
+
+        self.volume_ratio_native: dict[str, pd.Series] = {}
+        if rank_entries:
+            self.volume_ratio_native = {
+                t: df["volume_ratio"].reindex(self.master_dates, fill_value=0.0)
+                for t, df in self.signals.items()
+            }
+
+        self.macd_strength_native: dict[str, pd.Series] = {}
+        if rank_entries_by_macd:
+            self.macd_strength_native = {
+                t: df["macd_strength"].reindex(self.master_dates, fill_value=0.0)
+                for t, df in self.signals.items()
+            }
 
         self.atr_pct_ff: dict[str, pd.Series] = {}
         if vol_sizing or trailing_stop:
@@ -285,11 +345,24 @@ class BacktestEngine:
 
             # --- Entries ---
             equity = portfolio.equity(prices)
-            for ticker in sorted(self.signals):
-                if ticker in portfolio.positions or ticker not in prices:
-                    continue
-                if not bool(self.entry_native[ticker].get(date, False)):
-                    continue
+            candidates = [
+                t for t in self.signals
+                if t not in portfolio.positions and t in prices
+                and bool(self.entry_native[t].get(date, False))
+            ]
+            if self.rank_entries_by_macd:
+                candidates.sort(key=lambda t: self.macd_strength_native[t].get(date, 0.0),
+                                 reverse=True)
+            elif self.rank_entries:
+                # Most volume conviction first, so a collision day (more
+                # signals than open slots) fills with the strongest setups
+                # rather than whichever ticker sorts first alphabetically.
+                candidates.sort(key=lambda t: self.volume_ratio_native[t].get(date, 0.0),
+                                 reverse=True)
+            else:
+                candidates.sort()
+
+            for ticker in candidates:
                 price = prices[ticker]
                 sector = self.sector_map.get(ticker, "Unknown")
                 dollars = min(max_position_dollars(equity), portfolio.cash)

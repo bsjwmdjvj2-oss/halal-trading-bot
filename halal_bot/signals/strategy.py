@@ -19,6 +19,17 @@ Entry (all must hold):
 Exit (signal-triggered, independent of stop-loss/profit-take in halal_bot.risk):
   - Death cross: sma_fast crosses below sma_slow (trend turning down)
 
+Also emits volume_ratio (Volume / vol_avg) and macd_strength (macd_hist /
+Close, price-normalized so it's comparable across tickers) on every row, not
+just entry days — used by BacktestEngine's opt-in rank_entries /
+rank_entries_by_macd to prioritize same-day entry candidates when more
+tickers signal than there are open position slots, instead of taking them
+in alphabetical order. Both backtested and REJECTED (see BacktestEngine's
+docstring for numbers): volume_ratio lost or tied on every metric in every
+window; macd_strength won 2/12 checks (test-split CAGR/Sharpe only) but
+lost badly on the in-sample train split and on drawdown throughout. Kept as
+documented dead ends, not a live option.
+
 Thresholds live in halal_bot.config.SignalConfig and are tuned via backtesting.
 """
 from __future__ import annotations
@@ -56,7 +67,15 @@ def generate_signals(df: pd.DataFrame, adx_filter: bool = False, macd_filter: bo
     death_cross = (out["sma_fast"] < out["sma_slow"]) & (prev_fast >= prev_slow)
 
     rsi_ok_for_entry = out["rsi"] < cfg.rsi_overbought
+    out["volume_ratio"] = out["Volume"] / out["vol_avg"]
     volume_confirmed = out["Volume"] > (cfg.volume_confirm_multiplier * out["vol_avg"])
+
+    # Always computed (not gated by macd_filter) so macd_strength is
+    # available for BacktestEngine's opt-in rank_entries_by_macd even on a
+    # macd_filter=False run; macd_filter below still controls whether it
+    # gates entry_condition.
+    _, _, out["macd_hist"] = compute_macd(out["Close"], cfg.macd_fast, cfg.macd_slow, cfg.macd_signal)
+    out["macd_strength"] = out["macd_hist"] / out["Close"]  # price-normalized, comparable across tickers
 
     entry_condition = golden_cross & rsi_ok_for_entry & volume_confirmed
 
@@ -65,7 +84,6 @@ def generate_signals(df: pd.DataFrame, adx_filter: bool = False, macd_filter: bo
         entry_condition = entry_condition & (out["adx"] > cfg.adx_trend_threshold)
 
     if macd_filter:
-        _, _, out["macd_hist"] = compute_macd(out["Close"], cfg.macd_fast, cfg.macd_slow, cfg.macd_signal)
         entry_condition = entry_condition & (out["macd_hist"] > 0)
 
     out["entry_signal"] = entry_condition
