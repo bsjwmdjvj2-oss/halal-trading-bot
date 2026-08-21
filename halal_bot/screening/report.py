@@ -53,17 +53,22 @@ def render_text(snapshot: ScreeningSnapshot | None) -> str:
         f"(from re-screen on {snapshot.screened_on})",
         "",
         f"✅ Compliant: {len(snapshot.compliant)}/{total}",
+        "",
+        "📋 Compliant tickers, by sector:",
     ]
 
-    if snapshot.rejected:
-        lines.append("")
-        lines.append(f"❌ Rejected: {len(snapshot.rejected)}")
-        for ticker, reason in snapshot.rejected:
-            lines.append(f"  {ticker}: {reason}")
-
     if snapshot.compliant:
-        lines.append("")
-        lines.append("📋 Compliant tickers:")
-        lines.append(", ".join(snapshot.compliant))
+        from halal_bot.screening.watchlist import load_watchlist
+
+        sector_by_ticker = {i.ticker: i.sector for i in load_watchlist()}
+        by_sector: dict[str, list[str]] = {}
+        for ticker in snapshot.compliant:
+            by_sector.setdefault(sector_by_ticker.get(ticker, "Unknown"), []).append(ticker)
+
+        for sector in sorted(by_sector):
+            lines.append(f"\n{sector}:")
+            lines.append("  " + ", ".join(sorted(by_sector[sector])))
+    else:
+        lines.append("  (none)")
 
     return "\n".join(lines)

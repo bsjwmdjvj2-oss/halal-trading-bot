@@ -211,7 +211,5 @@ def format_telegram_screening(snapshot: dict, watchlist: list[Instrument]) -> st
         tracked, new_pass, new_fail = _classify(rows, known)
         lines.append(f"\n{label} ({len(rows)} total, {len(tracked)} already tracked):")
         lines.append(f"  New + halal-pass: {', '.join(sorted(new_pass)) or '(none)'}")
-        if new_fail:
-            lines.append(f"  New but halal-fail: {', '.join(sorted(new_fail))}")
 
     return "\n".join(lines)
