@@ -23,6 +23,15 @@ def max_position_dollars(equity: float) -> float:
     return equity * CONFIG.risk.max_position_size_pct
 
 
+def max_positions_for_equity(equity: float) -> int:
+    """Concurrent-position cap, scaled down for small accounts so they
+    aren't spread across more simultaneous slices than their equity can
+    meaningfully support -- see PortfolioConfig.min_position_dollars."""
+    cfg = CONFIG.portfolio
+    scaled = int(equity // cfg.min_position_dollars)
+    return max(1, min(cfg.target_positions_max, scaled))
+
+
 def position_size_shares(equity: float, price: float, size_multiplier: float = 1.0) -> float:
     """Whole shares affordable within the max-position-size cap.
 
@@ -157,10 +166,9 @@ def can_open_new_position(
         return False, "Trading paused (drawdown threshold breached)"
     if check_drawdown_pause(portfolio.equity(prices), portfolio.equity_peak):
         return False, "Portfolio drawdown pause active"
-    if len(portfolio.positions) >= CONFIG.portfolio.target_positions_max:
-        return False, (
-            f"At max concurrent positions ({CONFIG.portfolio.target_positions_max})"
-        )
+    max_positions = max_positions_for_equity(portfolio.equity(prices))
+    if len(portfolio.positions) >= max_positions:
+        return False, f"At max concurrent positions ({max_positions})"
     if not sector_cap_allows(portfolio, sector, dollars, prices):
         return False, (
             f"Sector '{sector}' would exceed "

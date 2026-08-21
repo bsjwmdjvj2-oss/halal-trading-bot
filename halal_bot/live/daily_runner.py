@@ -33,6 +33,7 @@ from halal_bot.risk.rules import (
     check_drawdown_pause,
     check_exit_risk,
     max_position_dollars,
+    max_positions_for_equity,
     position_size_shares,
 )
 from halal_bot.screening.rules import screen_universe
@@ -338,7 +339,7 @@ class DailyRunner:
         lines = [
             "📅 DAILY SUMMARY",
             f"💰 Equity: ${account.equity:,.2f}  |  💵 Cash: ${account.cash:,.2f}",
-            f"📈 Open positions: {len(portfolio.positions)}/{CONFIG.portfolio.target_positions_max}",
+            f"📈 Open positions: {len(portfolio.positions)}/{max_positions_for_equity(account.equity)}",
         ]
         if portfolio.trading_paused:
             lines.append("⏸️ Status: PAUSED")

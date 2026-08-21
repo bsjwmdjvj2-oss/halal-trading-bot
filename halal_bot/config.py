@@ -33,6 +33,15 @@ class ScreeningConfig:
 class PortfolioConfig:
     target_positions_min: int = 10
     target_positions_max: int = 12
+    # The *actual* concurrent-position cap used at runtime is
+    # min(target_positions_max, equity // min_position_dollars) -- see
+    # halal_bot.risk.rules.max_positions_for_equity. target_positions_max
+    # alone made sense for a $20k+ account (12 x 15% positions), but tries
+    # to spread a small account (e.g. $300) across too many simultaneous
+    # slices. $75 is chosen so a $300 account caps at 4 concurrent
+    # positions; a $20k+ account still hits the target_positions_max=12
+    # ceiling exactly like before (no change to the validated backtest).
+    min_position_dollars: float = 75.0
     anchor_etf_slots: int = 2              # slots reserved for broad halal ETFs
     anchor_etf_tickers: tuple[str, ...] = ("SPUS", "HLAL")
     rebalance_interval_days: int = 30      # monthly rebalance
