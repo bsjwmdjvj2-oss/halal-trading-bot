@@ -5,10 +5,13 @@ STATUS: skeleton only — not yet exercised against a live account. Backtest
 the landing spot for wiring that same logic to real Alpaca orders once
 thresholds are validated (SPEC.md Section 9/13).
 
-Graceful recovery (Section 10): `reconcile_state` compares whatever the bot
-thinks it holds against what Alpaca actually reports, so a restart or API
-outage doesn't cause missed or duplicated trades. The live trading loop
-(not yet built) must call this on startup before doing anything else.
+`reconcile_state` is an available utility that compares expected local
+positions against what Alpaca actually reports. It is NOT currently called
+anywhere: halal_bot.live.daily_runner's recovery model instead rebuilds
+PortfolioState fresh from Alpaca on every run and never trusts any
+locally-cached position state, which makes reconciliation unnecessary today.
+Wire it in on startup if a future design ever introduces cached/trusted
+local position state between runs.
 """
 from __future__ import annotations
 
@@ -95,9 +98,9 @@ class AlpacaClient:
     def reconcile_state(self, expected_positions: dict[str, float]) -> list[str]:
         """Compares expected {ticker: shares} against Alpaca's actual positions.
 
-        Returns a list of human-readable discrepancy messages. Call on every
-        startup / after any API outage before resuming signal checks — this
-        is what makes restarts safe per Section 10.
+        Returns a list of human-readable discrepancy messages. NOT currently
+        called anywhere — see the module docstring. Available for a future
+        design that caches local position state between runs.
         """
         actual = self.get_account_snapshot().positions
         discrepancies = []

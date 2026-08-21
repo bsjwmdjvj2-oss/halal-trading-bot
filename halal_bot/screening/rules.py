@@ -69,8 +69,10 @@ def screen_instrument(instrument: Instrument, fundamentals: Fundamentals | None 
         return ScreeningResult(instrument.ticker, False, reasons, ratios, data_gaps=data_gaps)
 
     compliant = True
+    ratio_checks_run = 0
 
     if fundamentals.market_cap and fundamentals.total_debt is not None:
+        ratio_checks_run += 1
         debt_ratio = fundamentals.total_debt / fundamentals.market_cap
         ratios["debt_ratio"] = debt_ratio
         if debt_ratio > cfg.max_debt_ratio:
@@ -82,6 +84,7 @@ def screen_instrument(instrument: Instrument, fundamentals: Fundamentals | None 
         data_gaps.append("debt_ratio (missing market_cap or total_debt)")
 
     if fundamentals.market_cap and fundamentals.total_cash is not None:
+        ratio_checks_run += 1
         cash_ratio = fundamentals.total_cash / fundamentals.market_cap
         ratios["cash_securities_ratio"] = cash_ratio
         if cash_ratio > cfg.max_cash_securities_ratio:
@@ -94,6 +97,7 @@ def screen_instrument(instrument: Instrument, fundamentals: Fundamentals | None 
         data_gaps.append("cash_securities_ratio (missing market_cap or total_cash)")
 
     if fundamentals.total_revenue and fundamentals.interest_income is not None:
+        ratio_checks_run += 1
         impure_ratio = fundamentals.interest_income / fundamentals.total_revenue
         ratios["impure_income_ratio"] = impure_ratio
         if impure_ratio > cfg.max_impure_income_ratio:
@@ -107,7 +111,12 @@ def screen_instrument(instrument: Instrument, fundamentals: Fundamentals | None 
         # an explicit data gap rather than silently passing or failing.
         data_gaps.append("impure_income_ratio (missing total_revenue or interest_income)")
 
-    if not reasons:
+    if ratio_checks_run == 0:
+        # No ratio check could run at all — fail closed rather than let a
+        # ticker with zero verified fundamentals data pass as "compliant".
+        compliant = False
+        reasons.append("No ratio checks could be run (insufficient fundamentals data)")
+    elif not reasons:
         reasons.append("Passed all available ratio checks")
 
     return ScreeningResult(

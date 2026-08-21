@@ -169,9 +169,22 @@ class DailyRunner:
                        exit_signal[ticker], signal_reason[ticker],
                        {"close": latest_price[ticker], "rsi": float(last["rsi"])})
 
+        # Held positions that fell out of the compliant universe (failed
+        # re-screen, pending manual compliance review — see above) are
+        # deliberately not signal-traded, but still need a price so
+        # stop-loss/profit-take can keep protecting them below.
+        for ticker in account.positions:
+            if ticker in latest_price or ticker in state.compliant_universe:
+                continue
+            df = fetch_history(ticker, period_years=1, use_cache=False)
+            if not df.empty:
+                latest_price[ticker] = float(df["Close"].iloc[-1])
+
         # --- Exits: stop-loss / profit-take / signal exit ---
         for ticker in list(portfolio.positions):
             if ticker not in latest_price:
+                continue
+            if ticker in open_order_symbols:
                 continue
             price = latest_price[ticker]
             pos = portfolio.positions[ticker]
@@ -179,41 +192,34 @@ class DailyRunner:
 
             if decision.action == "stop_loss":
                 pnl = (price - pos.entry_price) * pos.shares
-                self._submit_and_log(client, ticker, "sell", pos.shares, price, decision.reason,
-                                      account.equity, category="stop_loss", pnl=pnl)
-                portfolio.cash += pos.shares * price
-                del portfolio.positions[ticker]
-                state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
+                if self._submit_and_log(client, ticker, "sell", pos.shares, price, decision.reason,
+                                         account.equity, category="stop_loss", pnl=pnl):
+                    portfolio.apply_sell(ticker, pos.shares, price)
+                    state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
                 continue
 
             if decision.action == "scale_out":
                 pnl = (price - pos.entry_price) * decision.shares
-                self._submit_and_log(client, ticker, "sell", decision.shares, price,
-                                      decision.reason, account.equity, category="scale_out",
-                                      pnl=pnl)
-                portfolio.cash += decision.shares * price
-                pos.shares -= decision.shares
-                if ticker not in state.scaled_out_tickers:
-                    state.scaled_out_tickers.append(ticker)
+                if self._submit_and_log(client, ticker, "sell", decision.shares, price,
+                                         decision.reason, account.equity, category="scale_out",
+                                         pnl=pnl):
+                    portfolio.apply_sell(ticker, decision.shares, price)
+                    if ticker not in state.scaled_out_tickers:
+                        state.scaled_out_tickers.append(ticker)
 
             # Anchor ETFs don't get sold on a death cross — held independent
             # of the technical signal by design (see anchor allocation block
             # below). Without this, a death cross sells it and the anchor
             # block immediately rebuys it same-run, churning for no purpose.
             is_anchor = ticker in CONFIG.portfolio.anchor_etf_tickers[:CONFIG.portfolio.anchor_etf_slots]
-            if not is_anchor and exit_signal.get(ticker):
-                remaining = pos.shares if decision.action != "scale_out" else (
-                    pos.shares - decision.shares
-                )
-                if remaining > 0:
-                    pnl = (price - pos.entry_price) * remaining
-                    self._submit_and_log(client, ticker, "sell", remaining, price,
-                                          signal_reason[ticker], account.equity,
-                                          category="signal_exit", pnl=pnl)
-                    portfolio.cash += remaining * price
-                    if ticker in portfolio.positions:
-                        del portfolio.positions[ticker]
-                state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
+            if not is_anchor and exit_signal.get(ticker) and pos.shares > 0:
+                remaining = pos.shares
+                pnl = (price - pos.entry_price) * remaining
+                if self._submit_and_log(client, ticker, "sell", remaining, price,
+                                         signal_reason[ticker], account.equity,
+                                         category="signal_exit", pnl=pnl):
+                    portfolio.apply_sell(ticker, remaining, price)
+                    state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t != ticker]
 
         # --- Monthly rebalance: trim oversized positions ---
         if _days_since(state.last_rebalance_date, today) >= CONFIG.portfolio.rebalance_interval_days:
@@ -221,17 +227,18 @@ class DailyRunner:
             for ticker, pos in list(portfolio.positions.items()):
                 if ticker not in latest_price:
                     continue
+                if ticker in open_order_symbols:
+                    continue
                 price = latest_price[ticker]
                 value = pos.market_value(price)
                 if value > cap_dollars:
                     excess_shares = float(int((value - cap_dollars) / price))
                     if excess_shares > 0:
                         pnl = (price - pos.entry_price) * excess_shares
-                        self._submit_and_log(client, ticker, "sell", excess_shares, price,
-                                              "Monthly rebalance: trimmed to max position size cap",
-                                              account.equity, category="rebalance_trim", pnl=pnl)
-                        portfolio.cash += excess_shares * price
-                        pos.shares -= excess_shares
+                        if self._submit_and_log(client, ticker, "sell", excess_shares, price,
+                                                 "Monthly rebalance: trimmed to max position size cap",
+                                                 account.equity, category="rebalance_trim", pnl=pnl):
+                            portfolio.apply_sell(ticker, excess_shares, price)
             state.last_rebalance_date = today.isoformat()
 
         # --- Anchor allocation (SPEC.md Section 3): force-hold configured
@@ -251,12 +258,12 @@ class DailyRunner:
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
-            if shares <= 0:
+            if shares <= 0 or shares * price > portfolio.cash:
                 continue
-            self._submit_and_log(client, ticker, "buy", shares, price,
-                                  "Anchor allocation (forced, independent of signal)",
-                                  account.equity, category="anchor_buy")
-            portfolio.cash -= shares * price
+            if self._submit_and_log(client, ticker, "buy", shares, price,
+                                     "Anchor allocation (forced, independent of signal)",
+                                     account.equity, category="anchor_buy"):
+                portfolio.apply_buy(ticker, sector, shares, price)
 
         # --- Entries ---
         for ticker in sorted(state.compliant_universe):
@@ -272,11 +279,11 @@ class DailyRunner:
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
-            if shares <= 0:
+            if shares <= 0 or shares * price > portfolio.cash:
                 continue
-            self._submit_and_log(client, ticker, "buy", shares, price, signal_reason[ticker],
-                                  account.equity, category="buy")
-            portfolio.cash -= shares * price  # keep local view consistent for subsequent iterations
+            if self._submit_and_log(client, ticker, "buy", shares, price, signal_reason[ticker],
+                                     account.equity, category="buy"):
+                portfolio.apply_buy(ticker, sector, shares, price)  # keeps local view consistent for subsequent iterations
 
         summary = self._daily_summary(account, portfolio)
         self._note(summary)
@@ -300,9 +307,20 @@ class DailyRunner:
 
     def _submit_and_log(self, client: AlpacaClient, ticker: str, side: str, shares: float,
                          price: float, reason: str, equity: float, category: str,
-                         pnl: float | None = None) -> None:
+                         pnl: float | None = None) -> bool:
+        """Returns True if the trade actually happened (or this is a dry run)
+        so callers only update local cash/position bookkeeping for trades
+        that really executed. A submission failure is caught here rather
+        than left to crash run_once — that would lose state bookkeeping for
+        every earlier trade that already executed this same run."""
         if self.live:
-            client.submit_market_order(ticker, shares, side)
+            try:
+                client.submit_market_order(ticker, shares, side)
+            except Exception as e:
+                log_event("order_submit_failed", f"{side} {shares} {ticker}: {e}",
+                           category=category)
+                self._note(f"⚠️ ORDER FAILED: {side} {shares:g} {ticker} @ ~${price:.2f} — {e}")
+                return False
         emoji, label = self._CATEGORY_LABELS.get(category, ("⚪", side.upper()))
         prefix = "" if self.live else "🧪 [DRY RUN] "
         pnl_text = f" (P&L {pnl:+,.2f})" if pnl is not None else ""
@@ -314,6 +332,7 @@ class DailyRunner:
             "date": trade_date, "action": category, "ticker": ticker,
             "shares": shares, "price": price,
         })
+        return True
 
     def _daily_summary(self, account: AccountSnapshot, portfolio: PortfolioState) -> str:
         lines = [
