@@ -8,6 +8,9 @@ makes /pause an effective kill-switch across process restarts.
 """
 from __future__ import annotations
 
+import asyncio
+import os
+
 from halal_bot.config import CONFIG
 from halal_bot.live.state_store import load_state, set_paused
 from halal_bot.logging_utils import log_event
@@ -128,6 +131,50 @@ def build_application(portfolio_status_fn=None):
         TRADING_STATE.resume()
         await update.message.reply_text("▶️ Trading resumed.")
 
+    invest_lock = asyncio.Lock()
+
+    async def invest_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """On-demand trigger for the exact same run_once() the scheduled
+        daily job calls — same signal generation, same risk/position-sizing/
+        sector-cap/halal-screen checks, same LIVE_TRADING_ENABLED gate. This
+        is a different *trigger* for that one code path, not a different or
+        looser way to buy: it doesn't bypass any of the existing checks, and
+        the double-buy guard (open orders checked before every entry) is the
+        same protection that already covers two overlapping runs, so this is
+        safe to invoke even while the scheduled run is close to firing."""
+        print("[telegram] /invest received")
+        if not _authorized(update):
+            return
+        if invest_lock.locked():
+            await update.message.reply_text("⏳ Already running — try again once it finishes.")
+            return
+
+        async with invest_lock:
+            live = os.getenv("LIVE_TRADING_ENABLED", "false").strip().lower() == "true"
+            await update.message.reply_text(
+                "🔄 Running now — " + ("LIVE, real orders will submit..." if live
+                                        else "DRY RUN (LIVE_TRADING_ENABLED=false)...")
+            )
+            from halal_bot.broker.alpaca_client import AlpacaNotConfiguredError
+            from halal_bot.live.daily_runner import run_once
+
+            try:
+                # Runs in a worker thread: run_once() is blocking (yfinance +
+                # Alpaca calls across the whole watchlist) and internally
+                # calls asyncio.run() for its own Telegram send when live —
+                # both need to happen off this bot's own event loop.
+                summary = await asyncio.to_thread(run_once, live=live)
+            except AlpacaNotConfiguredError as e:
+                await update.message.reply_text(f"⚠️ CONFIG ERROR: {e}")
+                return
+            except Exception as e:
+                log_event("invest_cmd_crashed", str(e))
+                await update.message.reply_text(f"⚠️ Run failed: {e}")
+                return
+
+            for i in range(0, len(summary), 4000):
+                await update.message.reply_text(summary[i:i + 4000])
+
     async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("[telegram] /dashboard received")
         if not _authorized(update):
@@ -153,6 +200,7 @@ def build_application(portfolio_status_fn=None):
         # commands only work if you already know and type them from memory.
         await application.bot.set_my_commands([
             BotCommand("status", "Portfolio status & open positions"),
+            BotCommand("invest", "Run entries now (cash -> today's picks)"),
             BotCommand("dashboard", "P&L, win rate, drawdown, Sharpe"),
             BotCommand("screening", "Halal screen: who passed/failed & why"),
             BotCommand("pause", "Stop opening new positions"),
@@ -166,6 +214,7 @@ def build_application(portfolio_status_fn=None):
         .build()
     )
     application.add_handler(CommandHandler("status", status_cmd))
+    application.add_handler(CommandHandler("invest", invest_cmd))
     application.add_handler(CommandHandler("dashboard", dashboard_cmd))
     application.add_handler(CommandHandler("screening", screening_cmd))
     application.add_handler(CommandHandler("pause", pause_cmd))
