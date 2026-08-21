@@ -172,8 +172,13 @@ def build_application(portfolio_status_fn=None):
                 await update.message.reply_text(f"⚠️ Run failed: {e}")
                 return
 
-            for i in range(0, len(summary), 4000):
-                await update.message.reply_text(summary[i:i + 4000])
+            # When live, run_once() already sent this exact summary itself
+            # (DailyRunner._send_telegram_summary) -- replying with it again
+            # here would double-post. Only the dry-run path (which skips that
+            # internal send) needs this reply.
+            if not live:
+                for i in range(0, len(summary), 4000):
+                    await update.message.reply_text(summary[i:i + 4000])
 
     dca_lock = asyncio.Lock()
 
