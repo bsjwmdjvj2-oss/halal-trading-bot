@@ -61,6 +61,14 @@ def macd(close: pd.Series, fast: int, slow: int, signal: int) -> tuple[pd.Series
     return _col(result, "MACD_"), _col(result, "MACDs_"), _col(result, "MACDh_")
 
 
+def atr_pct(high: pd.Series, low: pd.Series, close: pd.Series, period: int) -> pd.Series:
+    """Average True Range as a fraction of price (e.g. 0.025 = 2.5% average
+    daily range) — a volatility measure comparable across tickers of very
+    different share prices. Used by BacktestEngine's opt-in vol_sizing/
+    trailing_stop parameters (halal_bot.risk.rules); not read anywhere else."""
+    return ta.atr(high, low, close, length=period) / close
+
+
 def add_research_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Adds macd/macd_signal/macd_hist, bb_lower/bb_mid/bb_upper/bb_percent,
     and adx/plus_di/minus_di columns via pandas-ta. Research-only — nothing

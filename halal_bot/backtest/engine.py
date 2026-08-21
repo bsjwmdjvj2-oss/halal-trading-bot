@@ -28,7 +28,9 @@ from halal_bot.risk.rules import (
     check_exit_risk,
     max_position_dollars,
     position_size_shares,
+    volatility_size_multiplier,
 )
+from halal_bot.signals.indicators import atr_pct as compute_atr_pct
 from halal_bot.signals.strategy import generate_signals
 
 REBALANCE_INTERVAL_TRADING_DAYS = 21  # ~1 month
@@ -54,10 +56,24 @@ class BacktestResult:
 
 class BacktestEngine:
     def __init__(self, price_data: dict[str, pd.DataFrame], sector_map: dict[str, str],
-                 adx_filter: bool = False, macd_filter: bool = True):
+                 adx_filter: bool = False, macd_filter: bool = True,
+                 vol_sizing: bool = False, trailing_stop: bool = False):
         """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant).
-        adx_filter, macd_filter: forwarded to generate_signals() — see its docstring."""
+        adx_filter, macd_filter: forwarded to generate_signals() — see its docstring.
+        vol_sizing, trailing_stop: ATR-based position sizing / ATR-scaled
+        trailing stop (halal_bot.risk.rules). Backtested and REJECTED on a
+        3-year train/test split — every variant (each alone and combined)
+        lost on CAGR, Sharpe, max drawdown, AND win rate vs the fixed
+        baseline in every window (full/train/test). vol_sizing shrinks bets
+        on exactly the volatile growth names that are this strategy's
+        return engine; trailing_stop cuts trend-followers short on ordinary
+        pullbacks well before the death-cross exit would ever fire, and gets
+        whipsawed hardest during the same broad pullbacks it was meant to
+        protect against. Kept as a documented dead end (same status as
+        adx_filter) — both default False and should stay that way."""
         self.sector_map = sector_map
+        self.vol_sizing = vol_sizing
+        self.trailing_stop = trailing_stop
         self.signals = {t: generate_signals(df, adx_filter=adx_filter, macd_filter=macd_filter)
                          for t, df in price_data.items() if not df.empty}
         self.master_dates = sorted(set().union(*[df.index for df in self.signals.values()]))
@@ -77,6 +93,21 @@ class BacktestEngine:
             t: df["signal_reason"].reindex(self.master_dates, fill_value="")
             for t, df in self.signals.items()
         }
+
+        self.atr_pct_ff: dict[str, pd.Series] = {}
+        if vol_sizing or trailing_stop:
+            period = CONFIG.risk.atr_period
+            for t, df in price_data.items():
+                if t not in self.signals or len(df) <= period:
+                    continue
+                series = compute_atr_pct(df["High"], df["Low"], df["Close"], period)
+                self.atr_pct_ff[t] = series.reindex(self.master_dates).ffill()
+
+    def _size_multiplier(self, ticker: str, date) -> float:
+        if not self.vol_sizing:
+            return 1.0
+        atr = self.atr_pct_ff[ticker].get(date) if ticker in self.atr_pct_ff else None
+        return volatility_size_multiplier(atr)
 
     def _prices_on(self, date) -> dict[str, float]:
         """Forward-filled close for every ticker with a valid price by this
@@ -140,7 +171,9 @@ class BacktestEngine:
                     continue
                 price = prices[ticker]
                 pos = portfolio.positions[ticker]
-                decision = check_exit_risk(pos, price)
+                pos.update_high(price)
+                atr = self.atr_pct_ff[ticker].get(date) if ticker in self.atr_pct_ff else None
+                decision = check_exit_risk(pos, price, trailing_stop=self.trailing_stop, atr_pct=atr)
 
                 if decision.action == "stop_loss":
                     sell_price = price * (1 - slippage)
@@ -216,7 +249,8 @@ class BacktestEngine:
                 if not allowed:
                     continue
                 buy_price = price * (1 + slippage)
-                shares = position_size_shares(equity, buy_price)
+                size_mult = self._size_multiplier(ticker, date)
+                shares = position_size_shares(equity, buy_price, size_multiplier=size_mult)
                 cost = shares * buy_price
                 if shares <= 0 or cost > portfolio.cash:
                     continue
@@ -242,7 +276,8 @@ class BacktestEngine:
                 if not allowed:
                     continue
                 buy_price = price * (1 + slippage)
-                shares = position_size_shares(equity, buy_price)
+                size_mult = self._size_multiplier(ticker, date)
+                shares = position_size_shares(equity, buy_price, size_multiplier=size_mult)
                 cost = shares * buy_price
                 if shares <= 0 or cost > portfolio.cash:
                     continue
