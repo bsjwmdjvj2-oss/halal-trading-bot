@@ -129,4 +129,19 @@ def screen_instrument(instrument: Instrument, fundamentals: Fundamentals | None 
 
 
 def screen_universe(instruments: list[Instrument]) -> list[ScreeningResult]:
-    return [screen_instrument(i) for i in instruments]
+    results = []
+    for instrument in instruments:
+        try:
+            results.append(screen_instrument(instrument))
+        except Exception as exc:
+            # A single ticker's data fetch failing (delisted, renamed,
+            # provider outage) must not crash the whole re-screen and leave
+            # every other ticker un-screened -- fail closed on that ticker
+            # only, same principle as the zero-ratio-checks-run case above.
+            results.append(ScreeningResult(
+                ticker=instrument.ticker,
+                compliant=False,
+                reasons=[f"Screening failed: {exc}"],
+                data_gaps=["all fields (fetch_fundamentals raised)"],
+            ))
+    return results
