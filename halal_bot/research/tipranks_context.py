@@ -155,3 +155,63 @@ def format_context(snapshot: dict, watchlist: list[Instrument], halal_client=Non
                 lines.append(f"\n({disclaimer})")
 
     return "\n".join(lines)
+
+
+def _classify(rows: list[dict], known_tickers: set[str]) -> tuple[list[str], list[str], list[str]]:
+    """One TipRanks list (e.g. top_rated) -> (already-tracked tickers,
+    new-and-halal-pass tickers, new-and-halal-fail tickers). Dedupes by
+    ticker within the list."""
+    from halal_bot.screening.rules import screen_instrument
+
+    tracked: list[str] = []
+    new_pass: list[str] = []
+    new_fail: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        ticker = row.get("ticker", "").upper()
+        if not ticker or ticker in seen:
+            continue
+        seen.add(ticker)
+        if ticker in known_tickers:
+            tracked.append(ticker)
+            continue
+        sector = row.get("sectorName") or row.get("sector") or _SECTOR_FALLBACK
+        try:
+            result = screen_instrument(Instrument(ticker=ticker, sector=sector, is_etf=False))
+        except Exception:
+            continue  # no usable fundamentals data -- skip rather than guess
+        (new_pass if result.compliant else new_fail).append(ticker)
+    return tracked, new_pass, new_fail
+
+
+def format_telegram_screening(snapshot: dict, watchlist: list[Instrument]) -> str:
+    """Compact, chat-ready summary for the /screening Telegram command:
+    latest top analyst-rated (Strong Buy consensus), Smart Score == 10, and
+    AI Stock Analysis score > 80 -- each list cross-referenced against the
+    watchlist, with anything not yet tracked run through the real halal
+    ratio screen. Deliberately terse (counts + ticker lists, not a
+    paragraph per stock) to fit a phone screen. Returns "" if the snapshot
+    has none of these three lists."""
+    known = {i.ticker for i in watchlist}
+    by_name = {lst["name"]: lst["tickers"] for lst in snapshot["lists"]}
+    fetched_at = snapshot["fetched_at"][:10]
+
+    sections = [
+        ("⭐ Top analyst-rated", by_name.get("top_rated", [])),
+        ("🏆 Smart Score 10", [r for r in by_name.get("top_smart_score", []) if r.get("smartScore") == 10]),
+        ("🤖 AI score > 80", [r for r in by_name.get("ai_scores", []) if (r.get("ai_score") or 0) > 80]),
+    ]
+    if not any(rows for _, rows in sections):
+        return ""
+
+    lines = [f"📊 TipRanks screen (as of {fetched_at})"]
+    for label, rows in sections:
+        if not rows:
+            continue
+        tracked, new_pass, new_fail = _classify(rows, known)
+        lines.append(f"\n{label} ({len(rows)} total, {len(tracked)} already tracked):")
+        lines.append(f"  New + halal-pass: {', '.join(sorted(new_pass)) or '(none)'}")
+        if new_fail:
+            lines.append(f"  New but halal-fail: {', '.join(sorted(new_fail))}")
+
+    return "\n".join(lines)

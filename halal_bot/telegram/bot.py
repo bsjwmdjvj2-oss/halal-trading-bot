@@ -190,6 +190,20 @@ def build_application(portfolio_status_fn=None):
         from halal_bot.screening.report import load_latest_screening, render_text as render_screening
 
         text = render_screening(load_latest_screening())
+
+        # TipRanks section, if a snapshot exists (see tipranks_context's module
+        # docstring: TipRanks is only reachable via a chat-session MCP
+        # connection, so this reads whatever was last pulled there, not a
+        # live call -- silently omitted when there's no snapshot yet.
+        from halal_bot.research.tipranks_context import format_telegram_screening, load_snapshot
+        from halal_bot.screening.watchlist import load_watchlist
+
+        snapshot = load_snapshot()
+        if snapshot is not None:
+            tipranks_text = format_telegram_screening(snapshot, load_watchlist())
+            if tipranks_text:
+                text = text + "\n\n" + tipranks_text
+
         # Telegram caps messages at 4096 chars — the compliant-ticker list can
         # approach that with a large watchlist, so split rather than truncate.
         for i in range(0, len(text), 4000):
