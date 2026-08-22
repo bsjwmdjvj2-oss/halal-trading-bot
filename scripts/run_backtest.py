@@ -17,6 +17,7 @@ from halal_bot.data.prices import fetch_universe_history
 from halal_bot.logging_utils import log_screening
 from halal_bot.screening.rules import screen_universe
 from halal_bot.screening.watchlist import load_watchlist
+from halal_bot.backtest.benchmark import simulate_dca_benchmark
 from halal_bot.backtest.engine import BacktestEngine
 from halal_bot.backtest.report import print_summary, write_report
 
@@ -89,8 +90,17 @@ def main():
     engine = BacktestEngine(price_data, sector_map, monthly_contribution=args.monthly_contribution)
     result = engine.run(starting_capital=args.starting_capital)
 
-    print_summary(result, list(price_data.keys()), caveats)
-    run_dir = write_report(result, list(price_data.keys()), caveats)
+    print("Fetching S&P 500 (SPY) for benchmark comparison...")
+    starting_capital = args.starting_capital if args.starting_capital is not None else CONFIG.backtest.starting_capital
+    benchmark = simulate_dca_benchmark(
+        result.equity_curve.index, starting_capital, args.monthly_contribution,
+        lookback_years=CONFIG.backtest.lookback_years,
+    )
+    if benchmark is None:
+        caveats.append("SPY benchmark unavailable (no price history) -- comparison skipped.")
+
+    print_summary(result, list(price_data.keys()), caveats, benchmark=benchmark)
+    run_dir = write_report(result, list(price_data.keys()), caveats, benchmark=benchmark)
     print(f"Full report written to: {run_dir}")
 
 

@@ -41,13 +41,29 @@ class TipRanksList:
     tickers: list[dict] = field(default_factory=list)  # raw rows, must include "ticker"
 
 
-def save_snapshot(lists: list[TipRanksList], path: Path = SNAPSHOT_PATH) -> None:
+def save_snapshot(
+    lists: list[TipRanksList],
+    path: Path = SNAPSHOT_PATH,
+    news_articles: list[dict] | None = None,
+    market_commentary: dict | None = None,
+) -> None:
     """Called with freshly-pulled TipRanks data (see module docstring) --
-    not something this codebase can call unattended."""
+    not something this codebase can call unattended. Overwrites the whole
+    file, so a caller updating just one part (e.g. only refreshing news)
+    must pass the other parts through too (e.g. via load_snapshot() first)
+    or they're dropped.
+
+    news_articles (optional): raw rows from get_assets_news/get_latest_news
+    -- each expected to carry at least ticker, title, sentiment, url, date.
+    market_commentary (optional): the raw dict from get_market_commentary
+    (overallSentiment, atmosphere, keyThemes, tailwinds, headwinds) --
+    explicitly AI-generated per that tool's own docs, surfaced as such."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "lists": [{"name": lst.name, "tickers": lst.tickers} for lst in lists],
+        "news_articles": news_articles or [],
+        "market_commentary": market_commentary,
     }
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
@@ -211,5 +227,49 @@ def format_telegram_screening(snapshot: dict, watchlist: list[Instrument]) -> st
         tracked, new_pass, new_fail = _classify(rows, known)
         lines.append(f"\n{label} ({len(rows)} total, {len(tracked)} already tracked):")
         lines.append(f"  New + halal-pass: {', '.join(sorted(new_pass)) or '(none)'}")
+
+    return "\n".join(lines)
+
+
+NEWS_STALE_DAYS = 3  # news decays far faster than the score lists' 35-day window
+
+
+def format_telegram_news(snapshot: dict) -> str:
+    """Compact /news Telegram view: TipRanks' cached market-sentiment
+    snapshot (get_market_commentary -- explicitly AI-generated per its own
+    docs, labeled as such here) plus recent per-ticker headlines
+    (get_assets_news), grouped by ticker with a sentiment tag. Returns ""
+    if the snapshot has neither. Unlike format_telegram_screening's 35-day
+    tolerance, this flags itself stale after NEWS_STALE_DAYS since news
+    ages far faster than a smart-score list."""
+    commentary = snapshot.get("market_commentary")
+    articles = snapshot.get("news_articles") or []
+    if not commentary and not articles:
+        return ""
+
+    fetched_at = datetime.fromisoformat(snapshot["fetched_at"])
+    age_days = (datetime.now(timezone.utc) - fetched_at).days
+    lines = [f"📰 TipRanks market pulse (fetched {snapshot['fetched_at'][:10]})"]
+    if age_days > NEWS_STALE_DAYS:
+        lines.append(f"⚠️ {age_days} days old -- news moves fast, treat as background only.")
+
+    if commentary and commentary.get("overallSentiment"):
+        lines.append(f"\n🌐 Overall sentiment: {commentary['overallSentiment']} (AI-generated, TipRanks)")
+        if commentary.get("atmosphere"):
+            lines.append(commentary["atmosphere"])
+        for label, key in [("Tailwinds", "tailwinds"), ("Headwinds", "headwinds")]:
+            items = commentary.get(key) or []
+            if items:
+                lines.append(f"{label}: " + "; ".join(items[:3]))
+
+    if articles:
+        by_ticker: dict[str, list[dict]] = {}
+        for a in articles:
+            by_ticker.setdefault(a.get("ticker", "?"), []).append(a)
+        lines.append("\n📌 Recent headlines:")
+        for ticker in sorted(by_ticker):
+            top = by_ticker[ticker][0]
+            sentiment = top.get("sentiment", "")
+            lines.append(f"  {ticker} ({sentiment}): {top.get('title', '')}")
 
     return "\n".join(lines)

@@ -293,6 +293,30 @@ def build_application(portfolio_status_fn=None):
         for i in range(0, len(text), 4000):
             await update.message.reply_text(text[i:i + 4000])
 
+    async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cached TipRanks market pulse -- same snapshot-file pattern as
+        /screening's TipRanks section (see tipranks_context's module
+        docstring): TipRanks news/commentary is only reachable via a
+        chat-session MCP connection, so this reads whatever was last pulled
+        there, not a live call."""
+        print("[telegram] /news received")
+        if not _authorized(update):
+            return
+        from halal_bot.research.tipranks_context import format_telegram_news, load_snapshot
+
+        snapshot = load_snapshot()
+        if snapshot is None:
+            await update.message.reply_text(
+                "No TipRanks snapshot yet — ask Claude Code to pull fresh market news/data next session."
+            )
+            return
+        text = format_telegram_news(snapshot)
+        if not text:
+            await update.message.reply_text("Snapshot exists but has no news/commentary in it yet.")
+            return
+        for i in range(0, len(text), 4000):
+            await update.message.reply_text(text[i:i + 4000])
+
     async def _register_command_menu(application: Application) -> None:
         # Populates Telegram's native "/" menu button in the chat — otherwise
         # commands only work if you already know and type them from memory.
@@ -302,6 +326,7 @@ def build_application(portfolio_status_fn=None):
             BotCommand("dca", "DCA calculator: cash balance -> stocks to buy"),
             BotCommand("dashboard", "P&L, win rate, drawdown, Sharpe"),
             BotCommand("screening", "Halal screen: who passed/failed & why"),
+            BotCommand("news", "TipRanks market pulse & headlines"),
             BotCommand("pause", "Stop opening new positions"),
             BotCommand("resume", "Resume trading"),
         ])
@@ -317,6 +342,7 @@ def build_application(portfolio_status_fn=None):
     application.add_handler(CommandHandler("dca", dca_cmd))
     application.add_handler(CommandHandler("dashboard", dashboard_cmd))
     application.add_handler(CommandHandler("screening", screening_cmd))
+    application.add_handler(CommandHandler("news", news_cmd))
     application.add_handler(CommandHandler("pause", pause_cmd))
     application.add_handler(CommandHandler("resume", resume_cmd))
     return application
