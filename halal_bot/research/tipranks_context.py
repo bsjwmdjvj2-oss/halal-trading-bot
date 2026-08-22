@@ -46,6 +46,7 @@ def save_snapshot(
     path: Path = SNAPSHOT_PATH,
     news_articles: list[dict] | None = None,
     market_commentary: dict | None = None,
+    consensus_ratings: dict[str, dict] | None = None,
 ) -> None:
     """Called with freshly-pulled TipRanks data (see module docstring) --
     not something this codebase can call unattended. Overwrites the whole
@@ -57,13 +58,19 @@ def save_snapshot(
     -- each expected to carry at least ticker, title, sentiment, url, date.
     market_commentary (optional): the raw dict from get_market_commentary
     (overallSentiment, atmosphere, keyThemes, tailwinds, headwinds) --
-    explicitly AI-generated per that tool's own docs, surfaced as such."""
+    explicitly AI-generated per that tool's own docs, surfaced as such.
+    consensus_ratings (optional): {ticker: {"consensus": str, "price_target":
+    float|None, "upside_pct": float|None}} from get_assets_data, one entry
+    per watchlist ticker -- unlike top_smart_score/top_rated (TipRanks' own
+    curated top-N lists), this is meant to cover the WHOLE watchlist so
+    strong_buy_tickers() below can fail closed on anything not present."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "lists": [{"name": lst.name, "tickers": lst.tickers} for lst in lists],
         "news_articles": news_articles or [],
         "market_commentary": market_commentary,
+        "consensus_ratings": consensus_ratings or {},
     }
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
@@ -104,6 +111,32 @@ def smart_score_10_tickers(snapshot: dict | None) -> set[str]:
         if lst["name"] == "top_smart_score":
             return {r.get("ticker", "").upper() for r in lst["tickers"] if r.get("smartScore") == 10}
     return set()
+
+
+CONSENSUS_STALE_DAYS = 14  # analyst consensus moves slower than news but not glacially
+
+
+def strong_buy_tickers(snapshot: dict | None) -> set[str]:
+    """Tickers currently carrying a TipRanks "Strong Buy" analyst consensus,
+    from consensus_ratings (see save_snapshot) -- fail closed: a ticker
+    missing from consensus_ratings (never fetched, or the snapshot is
+    stale) is NOT treated as Strong Buy, same principle as
+    halal_bot.screening.rules failing a ticker closed on missing
+    fundamentals rather than defaulting it to compliant.
+
+    Used as a HARD GATE on new entries in halal_bot.live.daily_runner, on
+    top of the existing technical entry_signal -- a ticker needs both to
+    be bought. Same live-only caveat as smart_score_10_tickers: analyst
+    consensus can't be backtested without look-ahead bias (a rating
+    reflects the stock's own recent performance), so this is tracked
+    forward from deployment, not retroactively validated."""
+    if snapshot is None:
+        return set()
+    fetched_at = datetime.fromisoformat(snapshot["fetched_at"])
+    if (datetime.now(timezone.utc) - fetched_at).days > CONSENSUS_STALE_DAYS:
+        return set()
+    ratings = snapshot.get("consensus_ratings") or {}
+    return {t.upper() for t, r in ratings.items() if r.get("consensus") == "StrongBuy"}
 
 
 def format_context(snapshot: dict, watchlist: list[Instrument], halal_client=None) -> str:

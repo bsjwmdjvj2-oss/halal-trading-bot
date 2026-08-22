@@ -275,14 +275,31 @@ class DailyRunner:
         # only, never a gate (still requires an active entry_signal like
         # everything else here). See tipranks_context.smart_score_10_tickers
         # for why this is deliberately live-only, not backtested.
-        from halal_bot.research.tipranks_context import load_snapshot, smart_score_10_tickers
-        smart_score_priority = smart_score_10_tickers(load_snapshot())
+        # Strong Buy consensus is a HARD GATE (not just a priority like Smart
+        # Score): a ticker needs both an active technical entry_signal AND
+        # a current TipRanks "Strong Buy" consensus to be bought. Fails
+        # closed -- see tipranks_context.strong_buy_tickers -- so a ticker
+        # missing from the snapshot or a stale snapshot blocks ALL entries
+        # here, not just the ones without Strong Buy.
+        from halal_bot.research.tipranks_context import (
+            load_snapshot, smart_score_10_tickers, strong_buy_tickers,
+        )
+        tipranks_snapshot = load_snapshot()
+        smart_score_priority = smart_score_10_tickers(tipranks_snapshot)
+        strong_buy = strong_buy_tickers(tipranks_snapshot)
+        if not strong_buy:
+            self._note(
+                "⚠️ No TipRanks Strong-Buy data available (snapshot missing, stale, or "
+                "empty) -- ALL new entries are blocked until it's refreshed."
+            )
 
         for ticker in sorted(state.compliant_universe, key=lambda t: (t not in smart_score_priority, t)):
             if (ticker in portfolio.positions or ticker in open_order_symbols
                     or ticker not in latest_price):
                 continue
             if not entry_signal.get(ticker):
+                continue
+            if ticker not in strong_buy:
                 continue
             price = latest_price[ticker]
             sector = state.sector_map.get(ticker, "Unknown")
