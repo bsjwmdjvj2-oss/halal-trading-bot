@@ -85,6 +85,27 @@ def load_snapshot(path: Path = SNAPSHOT_PATH, max_age_days: int = 35) -> dict | 
     return payload
 
 
+def smart_score_10_tickers(snapshot: dict | None) -> set[str]:
+    """Tickers currently rated a perfect TipRanks Smart Score (10/10).
+
+    Deliberately LIVE-ONLY -- there is no historical point-in-time Smart
+    Score data available to us (TipRanks exposes only the current score),
+    so unlike every other opt-in experiment in this codebase
+    (adx_filter/vol_sizing/trailing_stop/rank_entries/min_hold_days), this
+    cannot be backtested without look-ahead bias: a stock's current score
+    is partly a function of its own recent price performance, so "did
+    today's top scorers do well historically" is close to circular, not a
+    real test of predictive power. Used only as a same-day entry-collision
+    priority in halal_bot.live.daily_runner (never a backtest input) --
+    tracked forward from when it's deployed, not retroactively validated."""
+    if snapshot is None:
+        return set()
+    for lst in snapshot["lists"]:
+        if lst["name"] == "top_smart_score":
+            return {r.get("ticker", "").upper() for r in lst["tickers"] if r.get("smartScore") == 10}
+    return set()
+
+
 def format_context(snapshot: dict, watchlist: list[Instrument], halal_client=None) -> str:
     """Cross-references every ticker across all TipRanks lists against the
     current watchlist, runs the real halal ratio screen on whichever ones

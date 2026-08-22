@@ -270,7 +270,15 @@ class DailyRunner:
                 portfolio.apply_buy(ticker, sector, shares, price)
 
         # --- Entries ---
-        for ticker in sorted(state.compliant_universe):
+        # Smart-Score-10 tickers get first claim on today's open slots when
+        # more tickers signal than there's room for -- a same-day priority
+        # only, never a gate (still requires an active entry_signal like
+        # everything else here). See tipranks_context.smart_score_10_tickers
+        # for why this is deliberately live-only, not backtested.
+        from halal_bot.research.tipranks_context import load_snapshot, smart_score_10_tickers
+        smart_score_priority = smart_score_10_tickers(load_snapshot())
+
+        for ticker in sorted(state.compliant_universe, key=lambda t: (t not in smart_score_priority, t)):
             if (ticker in portfolio.positions or ticker in open_order_symbols
                     or ticker not in latest_price):
                 continue
