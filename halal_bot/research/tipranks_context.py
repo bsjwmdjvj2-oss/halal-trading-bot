@@ -47,6 +47,7 @@ def save_snapshot(
     news_articles: list[dict] | None = None,
     market_commentary: dict | None = None,
     consensus_ratings: dict[str, dict] | None = None,
+    ai_analysis_scores: dict[str, dict] | None = None,
 ) -> None:
     """Called with freshly-pulled TipRanks data (see module docstring) --
     not something this codebase can call unattended. Overwrites the whole
@@ -63,7 +64,11 @@ def save_snapshot(
     float|None, "upside_pct": float|None}} from get_assets_data, one entry
     per watchlist ticker -- unlike top_smart_score/top_rated (TipRanks' own
     curated top-N lists), this is meant to cover the WHOLE watchlist so
-    strong_buy_tickers() below can fail closed on anything not present."""
+    analyst_buy_tickers() below can fail closed on anything not present.
+    ai_analysis_scores (optional): {ticker: {"ai_score": float, "rating":
+    str}} from get_ai_stock_analysis, also meant to cover the whole
+    watchlist (batched -- that tool caps at 25 tickers/call). This is
+    TipRanks' separate cross-model AI score, not the Smart Score."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -71,6 +76,7 @@ def save_snapshot(
         "news_articles": news_articles or [],
         "market_commentary": market_commentary,
         "consensus_ratings": consensus_ratings or {},
+        "ai_analysis_scores": ai_analysis_scores or {},
     }
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
@@ -116,13 +122,16 @@ def smart_score_10_tickers(snapshot: dict | None) -> set[str]:
 CONSENSUS_STALE_DAYS = 14  # analyst consensus moves slower than news but not glacially
 
 
-def strong_buy_tickers(snapshot: dict | None) -> set[str]:
-    """Tickers currently carrying a TipRanks "Strong Buy" analyst consensus,
-    from consensus_ratings (see save_snapshot) -- fail closed: a ticker
-    missing from consensus_ratings (never fetched, or the snapshot is
-    stale) is NOT treated as Strong Buy, same principle as
-    halal_bot.screening.rules failing a ticker closed on missing
-    fundamentals rather than defaulting it to compliant.
+def analyst_buy_tickers(snapshot: dict | None) -> set[str]:
+    """Tickers currently carrying a TipRanks "Buy" or "Strong Buy" analyst
+    consensus, from consensus_ratings (see save_snapshot). Widened from
+    Strong-Buy-only: 78/139 watchlist tickers were Strong Buy alone vs.
+    132/139 for Buy-or-better -- Strong-Buy-only was excluding names like
+    AAPL (rated plain "Buy") that are unremarkable exclusions, not real
+    quality signals. Fails closed: a ticker missing from consensus_ratings
+    (never fetched, or the snapshot is stale) is NOT treated as eligible,
+    same principle as halal_bot.screening.rules failing a ticker closed on
+    missing fundamentals rather than defaulting it to compliant.
 
     Used as a HARD GATE on new entries in halal_bot.live.daily_runner, on
     top of the existing technical entry_signal -- a ticker needs both to
@@ -136,7 +145,37 @@ def strong_buy_tickers(snapshot: dict | None) -> set[str]:
     if (datetime.now(timezone.utc) - fetched_at).days > CONSENSUS_STALE_DAYS:
         return set()
     ratings = snapshot.get("consensus_ratings") or {}
-    return {t.upper() for t, r in ratings.items() if r.get("consensus") == "StrongBuy"}
+    return {t.upper() for t, r in ratings.items() if r.get("consensus") in ("StrongBuy", "Buy")}
+
+
+def ai_score_map(snapshot: dict | None) -> dict[str, float]:
+    """{ticker: 0-100 TipRanks AI Stock Analysis score} from
+    ai_analysis_scores (see save_snapshot) -- the cross-model AI score
+    (OpenAI/Anthropic/Gemini/xAI/DeepSeek/Perplexity), NOT the same as
+    Smart Score. Empty dict (not fail-closed to block anything) if missing
+    or stale -- this is a ranking input, not a gate, so "no data" just
+    means that ticker sorts with the alphabetical fallback rather than
+    blocking it the way analyst_buy_tickers does."""
+    if snapshot is None:
+        return {}
+    fetched_at = datetime.fromisoformat(snapshot["fetched_at"])
+    if (datetime.now(timezone.utc) - fetched_at).days > CONSENSUS_STALE_DAYS:
+        return {}
+    scores = snapshot.get("ai_analysis_scores") or {}
+    return {t.upper(): r["ai_score"] for t, r in scores.items() if r.get("ai_score") is not None}
+
+
+def price_target_upside_map(snapshot: dict | None) -> dict[str, float]:
+    """{ticker: analyst avg 12-month price-target upside, decimal (0.05 =
+    +5%)} from consensus_ratings -- same source/staleness/priority-not-gate
+    treatment as ai_score_map."""
+    if snapshot is None:
+        return {}
+    fetched_at = datetime.fromisoformat(snapshot["fetched_at"])
+    if (datetime.now(timezone.utc) - fetched_at).days > CONSENSUS_STALE_DAYS:
+        return {}
+    ratings = snapshot.get("consensus_ratings") or {}
+    return {t.upper(): r["upside_pct"] for t, r in ratings.items() if r.get("upside_pct") is not None}
 
 
 def format_context(snapshot: dict, watchlist: list[Instrument], halal_client=None) -> str:

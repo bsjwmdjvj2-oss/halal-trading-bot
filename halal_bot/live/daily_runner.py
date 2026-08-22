@@ -270,36 +270,44 @@ class DailyRunner:
                 portfolio.apply_buy(ticker, sector, shares, price)
 
         # --- Entries ---
-        # Smart-Score-10 tickers get first claim on today's open slots when
-        # more tickers signal than there's room for -- a same-day priority
-        # only, never a gate (still requires an active entry_signal like
-        # everything else here). See tipranks_context.smart_score_10_tickers
-        # for why this is deliberately live-only, not backtested.
-        # Strong Buy consensus is a HARD GATE (not just a priority like Smart
-        # Score): a ticker needs both an active technical entry_signal AND
-        # a current TipRanks "Strong Buy" consensus to be bought. Fails
-        # closed -- see tipranks_context.strong_buy_tickers -- so a ticker
-        # missing from the snapshot or a stale snapshot blocks ALL entries
-        # here, not just the ones without Strong Buy.
+        # Analyst Buy-or-better consensus is a HARD GATE (a ticker needs
+        # both an active technical entry_signal AND a current TipRanks
+        # "Buy"/"Strong Buy" consensus to be bought). Fails closed -- see
+        # tipranks_context.analyst_buy_tickers -- so a missing or stale
+        # snapshot blocks ALL entries here, not just the ungated ones.
+        #
+        # Same-day collision priority (never a gate on their own, still
+        # requires entry_signal + the hard gate above): Smart Score 10
+        # membership first, then descending AI Stock Analysis score, then
+        # descending analyst price-target upside, alphabetical last as a
+        # final tiebreak. All three are deliberately live-only -- see
+        # tipranks_context for why none of them can be backtested without
+        # look-ahead bias.
         from halal_bot.research.tipranks_context import (
-            load_snapshot, smart_score_10_tickers, strong_buy_tickers,
+            ai_score_map, analyst_buy_tickers, load_snapshot,
+            price_target_upside_map, smart_score_10_tickers,
         )
         tipranks_snapshot = load_snapshot()
         smart_score_priority = smart_score_10_tickers(tipranks_snapshot)
-        strong_buy = strong_buy_tickers(tipranks_snapshot)
-        if not strong_buy:
+        ai_scores = ai_score_map(tipranks_snapshot)
+        upside = price_target_upside_map(tipranks_snapshot)
+        buy_rated = analyst_buy_tickers(tipranks_snapshot)
+        if not buy_rated:
             self._note(
-                "⚠️ No TipRanks Strong-Buy data available (snapshot missing, stale, or "
+                "⚠️ No TipRanks analyst-rating data available (snapshot missing, stale, or "
                 "empty) -- ALL new entries are blocked until it's refreshed."
             )
 
-        for ticker in sorted(state.compliant_universe, key=lambda t: (t not in smart_score_priority, t)):
+        def _entry_priority(t: str) -> tuple:
+            return (t not in smart_score_priority, -ai_scores.get(t, -1.0), -upside.get(t, -1.0), t)
+
+        for ticker in sorted(state.compliant_universe, key=_entry_priority):
             if (ticker in portfolio.positions or ticker in open_order_symbols
                     or ticker not in latest_price):
                 continue
             if not entry_signal.get(ticker):
                 continue
-            if ticker not in strong_buy:
+            if ticker not in buy_rated:
                 continue
             price = latest_price[ticker]
             sector = state.sector_map.get(ticker, "Unknown")
