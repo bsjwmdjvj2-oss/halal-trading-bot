@@ -36,7 +36,10 @@ class PortfolioConfig:
     # ($300 equity -> 4 positions, up to 20 at $7,500+), the same table
     # halal_bot.research.dca_calculator uses for "how many stocks should
     # this month's contribution spread across".
-    anchor_etf_slots: int = 2              # slots reserved for broad halal ETFs
+    # One anchor slot, SPUS only, per explicit instruction -- SPUS is first
+    # in anchor_etf_tickers so [:1] slicing picks it over HLAL without
+    # needing a separate "which ticker" field.
+    anchor_etf_slots: int = 1              # slots reserved for broad halal ETFs
     anchor_etf_tickers: tuple[str, ...] = ("SPUS", "HLAL")
     rebalance_interval_days: int = 30      # monthly rebalance
     strategy_review_interval_days: int = 90  # quarterly review
