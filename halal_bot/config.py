@@ -116,6 +116,18 @@ class HalalTerminalConfig:
 
 
 @dataclass(frozen=True)
+class TipRanksConfig:
+    """TipRanks' official MCP-over-HTTP server -- a real, unattended API key
+    (see halal_bot.research.tipranks_client), replacing the old chat-
+    session-only snapshot-refresh pattern. Free tier here is 100 calls/
+    month (a TipRanks Premium/Ultimate subscriber benefit, above the base
+    50); a full watchlist refresh costs ~15 calls, so budget for roughly
+    every 5 days, not daily."""
+    api_key: str = os.getenv("TIPRANKS_API_KEY", "")
+    base_url: str = os.getenv("TIPRANKS_API_BASE_URL", "https://mcp.tipranks.com")
+
+
+@dataclass(frozen=True)
 class TelegramConfig:
     bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -130,6 +142,7 @@ class Config:
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     alpaca: AlpacaConfig = field(default_factory=AlpacaConfig)
     halal_terminal: HalalTerminalConfig = field(default_factory=HalalTerminalConfig)
+    tipranks: TipRanksConfig = field(default_factory=TipRanksConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     watchlist_path: Path = ROOT_DIR / "data" / "watchlist.yaml"
     log_dir: Path = ROOT_DIR / "logs"

@@ -15,6 +15,7 @@ STATE_PATH = ROOT_DIR / "data" / "research_state.json"
 @dataclass
 class ResearchState:
     last_review_date: str | None = None
+    last_tipranks_refresh_date: str | None = None
 
 
 def load_state() -> ResearchState:
