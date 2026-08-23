@@ -62,21 +62,36 @@ class TipRanksClient:
         self._next_id = 1
         self._initialized = False
 
-    def _post_rpc(self, method: str, params: dict | None = None) -> dict:
+    def _post_rpc(self, method: str, params: dict | None = None, _retries: int = 5) -> dict:
         payload = {"jsonrpc": "2.0", "id": self._next_id, "method": method}
         if params is not None:
             payload["params"] = params
         self._next_id += 1
 
-        resp = self._http.post(self._url, json=payload, headers=self._headers)
-        resp.raise_for_status()
-        text = resp.text
-        if text.startswith("event:"):
-            for line in text.splitlines():
-                if line.startswith("data:"):
-                    return json.loads(line[len("data:"):].strip())
-            raise TipRanksAPIError(f"SSE response had no data line: {text[:200]!r}")
-        return resp.json()
+        for attempt in range(_retries):
+            resp = self._http.post(self._url, json=payload, headers=self._headers)
+            if resp.status_code == 429:
+                # Per-minute rate limit (confirmed live: free tier here is
+                # 10/minute, separate from the 100/month quota) -- a full
+                # refresh's ~14-16 calls fired back-to-back blows straight
+                # through that, so this backs off and retries rather than
+                # silently dropping data the way the caller previously did.
+                import time
+                retry_after = resp.headers.get("Retry-After")
+                wait = float(retry_after) if retry_after else 15.0
+                if attempt < _retries - 1:
+                    time.sleep(wait)
+                    continue
+                resp.raise_for_status()
+            resp.raise_for_status()
+            text = resp.text
+            if text.startswith("event:"):
+                for line in text.splitlines():
+                    if line.startswith("data:"):
+                        return json.loads(line[len("data:"):].strip())
+                raise TipRanksAPIError(f"SSE response had no data line: {text[:200]!r}")
+            return resp.json()
+        raise TipRanksAPIError(f"{method}: exhausted retries on 429")
 
     def _ensure_initialized(self) -> None:
         if self._initialized:
