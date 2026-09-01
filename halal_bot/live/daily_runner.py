@@ -270,42 +270,52 @@ class DailyRunner:
                 portfolio.apply_buy(ticker, sector, shares, price)
 
         # --- Entries ---
-        # Analyst Buy-or-better consensus is a HARD GATE (a ticker needs
-        # both an active technical entry_signal AND a current TipRanks
-        # "Buy"/"Strong Buy" consensus to be bought). Fails closed -- see
-        # tipranks_context.analyst_buy_tickers -- so a missing or stale
-        # snapshot blocks ALL entries here, not just the ungated ones.
+        # ENTIRELY TipRanks-driven, per explicit instruction ("ignore our
+        # strategy and rely on tipranks top scored stocks"): a ticker no
+        # longer needs an active technical entry_signal at all. It needs
+        # halal compliance (already filtered into compliant_universe) AND
+        # Smart Score 10 membership AND analyst Buy-or-better consensus.
+        # Both TipRanks conditions fail closed -- see tipranks_context --
+        # so a missing/stale snapshot blocks ALL entries, not just the
+        # ungated ones.
         #
-        # Same-day collision priority (never a gate on their own, still
-        # requires entry_signal + the hard gate above): Smart Score 10
-        # membership first, then descending AI Stock Analysis score, then
-        # descending analyst price-target upside, alphabetical last as a
-        # final tiebreak. All three are deliberately live-only -- see
-        # tipranks_context for why none of them can be backtested without
-        # look-ahead bias.
+        # IMPORTANT, stated plainly: this cannot be backtested. TipRanks
+        # only exposes the *current* Smart Score/consensus, never a
+        # historical point-in-time value, so there is no historical
+        # evidence this entry rule performs well -- unlike the technical
+        # signal it replaces, which was validated across multiple train/
+        # test splits (Sharpe 1.5-2.0+). This is a live, unvalidated
+        # experiment, not a backtested strategy. halal_bot.backtest.engine
+        # is deliberately NOT changed to match -- doing so would just
+        # reproduce the same look-ahead bias documented throughout
+        # tipranks_context, not produce real validation.
+        #
+        # Collision priority among the (now much smaller) Smart-Score-10
+        # pool: descending AI Stock Analysis score, then descending
+        # analyst price-target upside, alphabetical last as a tiebreak.
         from halal_bot.research.tipranks_context import (
             ai_score_map, analyst_buy_tickers, load_snapshot,
             price_target_upside_map, smart_score_10_tickers,
         )
         tipranks_snapshot = load_snapshot()
-        smart_score_priority = smart_score_10_tickers(tipranks_snapshot)
+        smart_score_10 = smart_score_10_tickers(tipranks_snapshot)
         ai_scores = ai_score_map(tipranks_snapshot)
         upside = price_target_upside_map(tipranks_snapshot)
         buy_rated = analyst_buy_tickers(tipranks_snapshot)
-        if not buy_rated:
+        if not buy_rated or not smart_score_10:
             self._note(
-                "⚠️ No TipRanks analyst-rating data available (snapshot missing, stale, or "
-                "empty) -- ALL new entries are blocked until it's refreshed."
+                "⚠️ No TipRanks Smart Score / analyst-rating data available (snapshot "
+                "missing, stale, or empty) -- ALL new entries are blocked until it's refreshed."
             )
 
         def _entry_priority(t: str) -> tuple:
-            return (t not in smart_score_priority, -ai_scores.get(t, -1.0), -upside.get(t, -1.0), t)
+            return (-ai_scores.get(t, -1.0), -upside.get(t, -1.0), t)
 
         for ticker in sorted(state.compliant_universe, key=_entry_priority):
             if (ticker in portfolio.positions or ticker in open_order_symbols
                     or ticker not in latest_price):
                 continue
-            if not entry_signal.get(ticker):
+            if ticker not in smart_score_10:
                 continue
             if ticker not in buy_rated:
                 continue
