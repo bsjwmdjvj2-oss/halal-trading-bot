@@ -193,13 +193,22 @@ def can_open_new_position(
     sector: str,
     dollars: float,
     prices: dict[str, float],
+    pending_positions: int = 0,
 ) -> tuple[bool, str]:
+    """pending_positions (opt-in, default 0): count of tickers with an order
+    already submitted this run (or a prior run, same day) that hasn't shown
+    up in portfolio.positions yet -- Alpaca fractional/notional market orders
+    aren't always filled by the time the account snapshot is taken, so a
+    same-day re-run (e.g. a manual invocation followed by the scheduled job)
+    can otherwise see an under-count of real positions and blow through the
+    cap. Backtests never pass this (a fill is instant there, so it's always
+    0 by omission)."""
     if portfolio.trading_paused:
         return False, "Trading paused (drawdown threshold breached)"
     if check_drawdown_pause(portfolio.equity(prices), portfolio.equity_peak):
         return False, "Portfolio drawdown pause active"
     max_positions = max_positions_for_equity(portfolio.equity(prices))
-    if len(portfolio.positions) >= max_positions:
+    if len(portfolio.positions) + pending_positions >= max_positions:
         return False, f"At max concurrent positions ({max_positions})"
     if not sector_cap_allows(portfolio, sector, dollars, prices):
         return False, (

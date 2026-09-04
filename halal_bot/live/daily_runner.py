@@ -258,7 +258,9 @@ class DailyRunner:
             price = latest_price[ticker]
             sector = state.sector_map.get(ticker, "Unknown")
             dollars = min(max_position_dollars(account.equity), portfolio.cash)
-            allowed, reason = can_open_new_position(portfolio, sector, dollars, latest_price)
+            pending_positions = len(open_order_symbols - portfolio.positions.keys())
+            allowed, reason = can_open_new_position(
+                portfolio, sector, dollars, latest_price, pending_positions=pending_positions)
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
@@ -322,7 +324,9 @@ class DailyRunner:
             price = latest_price[ticker]
             sector = state.sector_map.get(ticker, "Unknown")
             dollars = min(max_position_dollars(account.equity), portfolio.cash)
-            allowed, reason = can_open_new_position(portfolio, sector, dollars, latest_price)
+            pending_positions = len(open_order_symbols - portfolio.positions.keys())
+            allowed, reason = can_open_new_position(
+                portfolio, sector, dollars, latest_price, pending_positions=pending_positions)
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
