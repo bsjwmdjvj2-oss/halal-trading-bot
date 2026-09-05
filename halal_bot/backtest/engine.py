@@ -61,9 +61,18 @@ class BacktestEngine:
                  adx_filter: bool = False, macd_filter: bool = True,
                  vol_sizing: bool = False, trailing_stop: bool = False,
                  monthly_contribution: float = 0.0, rank_entries: bool = False,
-                 rank_entries_by_macd: bool = False, min_hold_days: int = 0):
+                 rank_entries_by_macd: bool = False, min_hold_days: int = 0,
+                 ml_filter: bool = False, ml_threshold: float = 0.5):
         """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant).
-        adx_filter, macd_filter: forwarded to generate_signals() — see its docstring.
+        adx_filter, macd_filter, ml_filter, ml_threshold: forwarded to
+        generate_signals() — see its docstring. ml_filter replaces the whole
+        entry rule rather than ANDing onto it like adx_filter/macd_filter --
+        see halal_bot.signals.strategy and scripts/train_ml_model.py.
+        Backtested and REJECTED (held-out AUC 0.515, lost Sharpe/CAGR in
+        every window -- full/train/test numbers recorded in
+        halal_bot.signals.strategy's docstring). Kept as a documented dead
+        end, same status as adx_filter/vol_sizing -- not a live option,
+        default off.
         vol_sizing, trailing_stop: ATR-based position sizing / ATR-scaled
         trailing stop (halal_bot.risk.rules). Backtested and REJECTED on a
         3-year train/test split — every variant (each alone and combined)
@@ -156,7 +165,8 @@ class BacktestEngine:
         self.rank_entries = rank_entries
         self.rank_entries_by_macd = rank_entries_by_macd
         self.min_hold_days = min_hold_days
-        self.signals = {t: generate_signals(df, adx_filter=adx_filter, macd_filter=macd_filter)
+        self.signals = {t: generate_signals(df, adx_filter=adx_filter, macd_filter=macd_filter,
+                                             ml_filter=ml_filter, ml_threshold=ml_threshold)
                          for t, df in price_data.items() if not df.empty}
         self.master_dates = sorted(set().union(*[df.index for df in self.signals.values()]))
 

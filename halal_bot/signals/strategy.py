@@ -15,9 +15,29 @@ Entry (all must hold):
     for this kind of system. Backtested and REJECTED (loses on every metric
     in every window, see commit history) — kept as a documented dead end,
     not a live option. NOT live — see adx_filter param below.
+  - [optional, off by default, mutually exclusive with the above -- see
+    ml_filter param below] ML entry signal: entry_condition is REPLACED
+    entirely by halal_bot.ml's trained classifier's score exceeding
+    ml_threshold, ignoring golden-cross/RSI/volume/MACD/ADX. A genuine
+    head-to-head test of "can a learned model replace the hand-tuned rule"
+    rather than one more AND-condition narrowing it -- see
+    halal_bot.ml.features/labels/model and scripts/train_ml_model.py for
+    the training pipeline. Backtested and REJECTED: held-out AUC 0.515
+    (price/volume-only features carry essentially no predictive edge at a
+    10-trading-day horizon -- indistinguishable from a coin flip), and lost
+    on Sharpe AND CAGR in all three windows (full 1.39->0.93 / 20.3%->13.6%,
+    train 0.87->0.77 / 11.9%->11.5%, test 1.87->1.62 / 28.2%->21.0%). Traded
+    more often (126->137 full-sample) and nudged win-rate up (73.8%->74.5%)
+    by taking more, smaller/lower-conviction positions -- exactly what a
+    model with no real edge does when it trades more. Kept as a documented
+    dead end, same status as adx_filter -- not a live option, default off.
+    See halal_bot.ml module docstrings for what data this used (technical/
+    price-volume only; fundamentals and TipRanks are current-snapshot-only
+    and would introduce look-ahead bias as training features).
 
 Exit (signal-triggered, independent of stop-loss/profit-take in halal_bot.risk):
   - Death cross: sma_fast crosses below sma_slow (trend turning down)
+    Unchanged by ml_filter -- this spike is entry-only.
 
 Also emits volume_ratio (Volume / vol_avg) and macd_strength (macd_hist /
 Close, price-normalized so it's comparable across tickers) on every row, not
@@ -50,12 +70,21 @@ class SignalRow:
     reasons: list[str]
 
 
-def generate_signals(df: pd.DataFrame, adx_filter: bool = False, macd_filter: bool = True) -> pd.DataFrame:
+def generate_signals(df: pd.DataFrame, adx_filter: bool = False, macd_filter: bool = True,
+                      ml_filter: bool = False, ml_threshold: float = 0.5) -> pd.DataFrame:
     """Returns df with indicators + entry_signal, exit_signal, signal_reason columns.
 
     macd_filter defaults True — it's the validated live default (see module
     docstring). adx_filter defaults False and should stay that way (rejected).
     Both remain overridable so backtests can still A/B against the baseline.
+
+    ml_filter (opt-in, default False): REPLACES entry_condition wholesale
+    with halal_bot.ml's trained classifier's score > ml_threshold, ignoring
+    golden_cross/rsi_ok_for_entry/volume_confirmed/adx/macd entirely --
+    unlike adx_filter/macd_filter, which AND onto the base rule. Requires a
+    trained model (see scripts/train_ml_model.py); fails closed (entry_signal
+    all False) if none exists yet, same discipline
+    halal_bot.research.tipranks_context uses for a missing snapshot.
     """
     cfg = CONFIG.signal
     out = add_indicators(df)
@@ -77,14 +106,26 @@ def generate_signals(df: pd.DataFrame, adx_filter: bool = False, macd_filter: bo
     _, _, out["macd_hist"] = compute_macd(out["Close"], cfg.macd_fast, cfg.macd_slow, cfg.macd_signal)
     out["macd_strength"] = out["macd_hist"] / out["Close"]  # price-normalized, comparable across tickers
 
-    entry_condition = golden_cross & rsi_ok_for_entry & volume_confirmed
+    if ml_filter:
+        from halal_bot.ml.features import build_feature_matrix
+        from halal_bot.ml.model import load_model, predict_scores
 
-    if adx_filter:
-        out["adx"] = compute_adx(out["High"], out["Low"], out["Close"], cfg.adx_period)
-        entry_condition = entry_condition & (out["adx"] > cfg.adx_trend_threshold)
+        loaded = load_model()
+        if loaded is None:
+            entry_condition = pd.Series(False, index=out.index)
+        else:
+            model, _meta = loaded
+            ml_scores = predict_scores(model, build_feature_matrix(df))
+            entry_condition = ml_scores > ml_threshold
+    else:
+        entry_condition = golden_cross & rsi_ok_for_entry & volume_confirmed
 
-    if macd_filter:
-        entry_condition = entry_condition & (out["macd_hist"] > 0)
+        if adx_filter:
+            out["adx"] = compute_adx(out["High"], out["Low"], out["Close"], cfg.adx_period)
+            entry_condition = entry_condition & (out["adx"] > cfg.adx_trend_threshold)
+
+        if macd_filter:
+            entry_condition = entry_condition & (out["macd_hist"] > 0)
 
     out["entry_signal"] = entry_condition
     out["exit_signal"] = death_cross
@@ -92,17 +133,20 @@ def generate_signals(df: pd.DataFrame, adx_filter: bool = False, macd_filter: bo
     def _reason(row) -> str:
         parts = []
         if row["entry_signal"]:
-            reason = (
-                f"golden cross (sma{cfg.sma_fast}={row['sma_fast']:.2f} > "
-                f"sma{cfg.sma_slow}={row['sma_slow']:.2f}), "
-                f"rsi={row['rsi']:.1f} < {cfg.rsi_overbought}, "
-                f"volume={row['Volume']:.0f} > "
-                f"{cfg.volume_confirm_multiplier}x avg({row['vol_avg']:.0f})"
-            )
-            if adx_filter:
-                reason += f", adx={row['adx']:.1f} > {cfg.adx_trend_threshold}"
-            if macd_filter:
-                reason += f", macd_hist={row['macd_hist']:.2f} > 0"
+            if ml_filter:
+                reason = f"ML entry score > {ml_threshold}"
+            else:
+                reason = (
+                    f"golden cross (sma{cfg.sma_fast}={row['sma_fast']:.2f} > "
+                    f"sma{cfg.sma_slow}={row['sma_slow']:.2f}), "
+                    f"rsi={row['rsi']:.1f} < {cfg.rsi_overbought}, "
+                    f"volume={row['Volume']:.0f} > "
+                    f"{cfg.volume_confirm_multiplier}x avg({row['vol_avg']:.0f})"
+                )
+                if adx_filter:
+                    reason += f", adx={row['adx']:.1f} > {cfg.adx_trend_threshold}"
+                if macd_filter:
+                    reason += f", macd_hist={row['macd_hist']:.2f} > 0"
             parts.append(reason)
         if row["exit_signal"]:
             parts.append(

@@ -16,3 +16,6 @@ anthropic>=0.40
 
 # Halal Terminal (quarterly research cross-check) — direct REST calls
 httpx>=0.27
+
+# ML entry-signal research spike (halal_bot.ml) — joblib ships bundled with it
+scikit-learn>=1.4

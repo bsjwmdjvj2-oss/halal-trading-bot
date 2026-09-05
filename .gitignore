@@ -11,6 +11,8 @@ data/live_state.json
 data/live_state.json.tmp
 data/research_state.json
 data/tipranks_snapshot.json
+data/ml_model.joblib
+data/ml_model_meta.json
 research_results/
 .DS_Store
 *.egg-info/
