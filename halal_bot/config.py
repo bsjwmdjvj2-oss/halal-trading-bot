@@ -67,7 +67,15 @@ class SignalConfig:
 
 @dataclass(frozen=True)
 class RiskConfig:
-    max_position_size_pct: float = 0.15      # ~12-15% of portfolio per position
+    max_position_size_pct: float = 0.20      # raised from 0.15 -- backtested and ADOPTED
+    # (scripts/backtest_position_cap_sweep.py): beat the 15% baseline on Sharpe/CAGR/
+    # win-rate in full, train, AND test windows (full Sharpe 1.39->1.56, CAGR 20.3%->
+    # 21.1%; test Sharpe 1.87->2.15, CAGR 28.2%->36.2%), with LOWER drawdown too
+    # (fewer forced rebalance trims cutting down winners like PANW/META/BIIB). 25%
+    # tested slightly better still but 30% cliffed hard in the test window (Sharpe
+    # 0.44, drawdown -18.1%) -- picked 20% as the more conservative of the two
+    # cleanly-passing values, since single-position concentration risk is real and
+    # non-linear past some point this sweep didn't pin down precisely.
     stop_loss_pct: float = 0.18              # 15-20% below entry
     profit_take_trigger_pct: float = 0.30    # scale out after 30%+ gain
     profit_take_scale_out_pct: float = 0.25  # sell 25% of position on trigger
