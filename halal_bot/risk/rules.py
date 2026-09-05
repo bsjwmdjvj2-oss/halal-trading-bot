@@ -188,6 +188,16 @@ def sector_cap_allows(
     return projected_ratio <= CONFIG.risk.max_sector_concentration_pct
 
 
+def bucket_has_room(held_count: int, pending_count: int, slots: int) -> bool:
+    """True if a sub-allocation bucket (e.g. TipRanks-driven vs
+    old-technical-signal entries, see DailyRunner) has room for one more.
+    pending_count carries the same same-day-re-run rationale as
+    can_open_new_position's pending_positions -- an order already submitted
+    for a ticker in this bucket that hasn't filled (and so isn't in
+    portfolio.positions) yet still occupies the slot."""
+    return held_count + pending_count < slots
+
+
 def can_open_new_position(
     portfolio: PortfolioState,
     sector: str,

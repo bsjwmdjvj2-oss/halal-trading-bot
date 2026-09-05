@@ -36,6 +36,7 @@ class LiveState:
     sector_map: dict[str, str] = field(default_factory=dict)
     last_screen_date: str | None = None
     last_rebalance_date: str | None = None
+    entry_strategy: dict[str, str] = field(default_factory=dict)  # ticker -> "tipranks" | "old_strategy", for the 3-way position-bucket split (Alpaca has no concept of "why we bought")
 
 
 def load_state() -> LiveState:

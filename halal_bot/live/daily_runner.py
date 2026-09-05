@@ -29,6 +29,7 @@ from halal_bot.logging_utils import (
 )
 from halal_bot.portfolio import Position, PortfolioState
 from halal_bot.risk.rules import (
+    bucket_has_room,
     can_open_new_position,
     check_drawdown_pause,
     check_exit_risk,
@@ -98,6 +99,17 @@ class DailyRunner:
         # Drop scale-out bookkeeping for anything we no longer actually hold
         # (e.g. a crash after order submit but before save_state last run).
         state.scaled_out_tickers = [t for t in state.scaled_out_tickers if t in account.positions]
+        state.entry_strategy = {t: v for t, v in state.entry_strategy.items() if t in account.positions}
+
+        # Backfill: any currently-held non-anchor position with no recorded
+        # entry_strategy predates this bucket split (bought back when
+        # TipRanks was the only live entry gate) -- without this, the
+        # 3-way split below would count it as occupying NEITHER bucket and
+        # let the bot buy on top of an already-full account.
+        anchor_tickers = set(CONFIG.portfolio.anchor_etf_tickers[:CONFIG.portfolio.anchor_etf_slots])
+        for ticker in account.positions:
+            if ticker not in anchor_tickers and ticker not in state.entry_strategy:
+                state.entry_strategy[ticker] = "tipranks"
 
         period_return_pct = (
             (account.equity - state.previous_equity) / state.previous_equity * 100
@@ -215,7 +227,7 @@ class DailyRunner:
             # of the technical signal by design (see anchor allocation block
             # below). Without this, a death cross sells it and the anchor
             # block immediately rebuys it same-run, churning for no purpose.
-            is_anchor = ticker in CONFIG.portfolio.anchor_etf_tickers[:CONFIG.portfolio.anchor_etf_slots]
+            is_anchor = ticker in anchor_tickers
             if not is_anchor and exit_signal.get(ticker) and pos.shares > 0:
                 remaining = pos.shares
                 pnl = (price - pos.entry_price) * remaining
@@ -271,30 +283,50 @@ class DailyRunner:
                                      account.equity, category="anchor_buy"):
                 portfolio.apply_buy(ticker, sector, shares, price)
 
-        # --- Entries ---
-        # ENTIRELY TipRanks-driven, per explicit instruction ("ignore our
-        # strategy and rely on tipranks top scored stocks"): a ticker no
-        # longer needs an active technical entry_signal at all. It needs
-        # halal compliance (already filtered into compliant_universe) AND
-        # Smart Score 10 membership AND analyst Buy-or-better consensus.
-        # Both TipRanks conditions fail closed -- see tipranks_context --
-        # so a missing/stale snapshot blocks ALL entries, not just the
-        # ungated ones.
+        # --- Entries: 3-way split of the equity-scaled position cap ---
+        # Anchors claim min(anchor_etf_slots, total_cap) first (handled
+        # above); the remainder splits as evenly as possible between
+        # TipRanks-driven entries and the original technical-signal entries
+        # this bot backtested and validated (golden cross + RSI + volume +
+        # MACD confirmation -- halal_bot.signals.strategy), with TipRanks
+        # rounding up on an odd remainder. Re-derives every run from
+        # max_positions_for_equity(account.equity), so both buckets grow
+        # automatically as the diversification table does (2/1/1 at ~$300
+        # equity today, 2/2/2 once equity crosses $750).
+        total_cap = max_positions_for_equity(account.equity)
+        anchor_slots = min(CONFIG.portfolio.anchor_etf_slots, total_cap)
+        remaining_slots = max(0, total_cap - anchor_slots)
+        tipranks_slots = -(-remaining_slots // 2)  # ceil
+        old_strategy_slots = remaining_slots - tipranks_slots
+
+        held_tipranks = [t for t in portfolio.positions if state.entry_strategy.get(t) == "tipranks"]
+        held_old_strategy = [t for t in portfolio.positions if state.entry_strategy.get(t) == "old_strategy"]
+        pending_tipranks = len([t for t in open_order_symbols if t not in portfolio.positions
+                                and state.entry_strategy.get(t) == "tipranks"])
+        pending_old_strategy = len([t for t in open_order_symbols if t not in portfolio.positions
+                                    and state.entry_strategy.get(t) == "old_strategy"])
+
+        # --- TipRanks-driven bucket ---
+        # A ticker needs halal compliance (already filtered into
+        # compliant_universe) AND Smart Score 10 membership AND analyst
+        # Buy-or-better consensus. Both TipRanks conditions fail closed --
+        # see tipranks_context -- so a missing/stale snapshot blocks this
+        # whole bucket, not the other one.
         #
         # IMPORTANT, stated plainly: this cannot be backtested. TipRanks
         # only exposes the *current* Smart Score/consensus, never a
         # historical point-in-time value, so there is no historical
         # evidence this entry rule performs well -- unlike the technical
-        # signal it replaces, which was validated across multiple train/
-        # test splits (Sharpe 1.5-2.0+). This is a live, unvalidated
+        # signal in the bucket below, which was validated across multiple
+        # train/test splits (Sharpe 1.5-2.0+). This is a live, unvalidated
         # experiment, not a backtested strategy. halal_bot.backtest.engine
         # is deliberately NOT changed to match -- doing so would just
         # reproduce the same look-ahead bias documented throughout
         # tipranks_context, not produce real validation.
         #
-        # Collision priority among the (now much smaller) Smart-Score-10
-        # pool: descending AI Stock Analysis score, then descending
-        # analyst price-target upside, alphabetical last as a tiebreak.
+        # Collision priority within the Smart-Score-10 pool: descending AI
+        # Stock Analysis score, then descending analyst price-target
+        # upside, alphabetical last as a tiebreak.
         from halal_bot.research.tipranks_context import (
             ai_score_map, analyst_buy_tickers, load_snapshot,
             price_target_upside_map, smart_score_10_tickers,
@@ -307,13 +339,15 @@ class DailyRunner:
         if not buy_rated or not smart_score_10:
             self._note(
                 "⚠️ No TipRanks Smart Score / analyst-rating data available (snapshot "
-                "missing, stale, or empty) -- ALL new entries are blocked until it's refreshed."
+                "missing, stale, or empty) -- the TipRanks entry bucket is blocked until it's refreshed."
             )
 
         def _entry_priority(t: str) -> tuple:
             return (-ai_scores.get(t, -1.0), -upside.get(t, -1.0), t)
 
         for ticker in sorted(state.compliant_universe, key=_entry_priority):
+            if not bucket_has_room(len(held_tipranks), pending_tipranks, tipranks_slots):
+                break
             if (ticker in portfolio.positions or ticker in open_order_symbols
                     or ticker not in latest_price):
                 continue
@@ -333,10 +367,47 @@ class DailyRunner:
             if shares * price < MIN_ORDER_DOLLARS or shares * price > portfolio.cash:
                 continue
             if self._submit_and_log(client, ticker, "buy", shares, price, signal_reason[ticker],
-                                     account.equity, category="buy"):
+                                     account.equity, category="tipranks_buy"):
                 portfolio.apply_buy(ticker, sector, shares, price)  # keeps local view consistent for subsequent iterations
+                state.entry_strategy[ticker] = "tipranks"
+                held_tipranks.append(ticker)
 
-        summary = self._daily_summary(account, portfolio)
+        # --- Old-strategy bucket ---
+        # The rules-based entry this bot backtested and validated before
+        # TipRanks was introduced -- entry_signal is computed above every
+        # run regardless of which buckets are open, so re-enabling it here
+        # is just re-gating on it. No live prioritization scheme among
+        # simultaneous signals (rank_entries/rank_entries_by_macd were
+        # tried in backtesting and rejected -- see halal_bot.signals.strategy
+        # and BacktestEngine) -- natural compliant_universe order.
+        for ticker in state.compliant_universe:
+            if not bucket_has_room(len(held_old_strategy), pending_old_strategy, old_strategy_slots):
+                break
+            if (ticker in portfolio.positions or ticker in open_order_symbols
+                    or ticker not in latest_price):
+                continue
+            if not entry_signal.get(ticker):
+                continue
+            price = latest_price[ticker]
+            sector = state.sector_map.get(ticker, "Unknown")
+            dollars = min(max_position_dollars(account.equity), portfolio.cash)
+            pending_positions = len(open_order_symbols - portfolio.positions.keys())
+            allowed, reason = can_open_new_position(
+                portfolio, sector, dollars, latest_price, pending_positions=pending_positions)
+            if not allowed:
+                continue
+            shares = position_size_shares(account.equity, price)
+            if shares * price < MIN_ORDER_DOLLARS or shares * price > portfolio.cash:
+                continue
+            if self._submit_and_log(client, ticker, "buy", shares, price, signal_reason[ticker],
+                                     account.equity, category="buy"):
+                portfolio.apply_buy(ticker, sector, shares, price)
+                state.entry_strategy[ticker] = "old_strategy"
+                held_old_strategy.append(ticker)
+
+        anchor_held = len(anchor_tickers & portfolio.positions.keys())
+        summary = self._daily_summary(account, portfolio,
+                                       bucket_counts=(anchor_held, len(held_tipranks), len(held_old_strategy)))
         self._note(summary)
 
         if self.live:
@@ -348,7 +419,8 @@ class DailyRunner:
         return "\n".join(self.messages)
 
     _CATEGORY_LABELS = {
-        "buy": ("🟢", "BUY"),
+        "buy": ("🔵", "SIGNAL BUY"),
+        "tipranks_buy": ("🟢", "TIPRANKS BUY"),
         "anchor_buy": ("⚓", "ANCHOR BUY"),
         "stop_loss": ("🛑", "STOP-LOSS SELL"),
         "scale_out": ("💰", "PROFIT-TAKE SELL"),
@@ -385,12 +457,16 @@ class DailyRunner:
         })
         return True
 
-    def _daily_summary(self, account: AccountSnapshot, portfolio: PortfolioState) -> str:
+    def _daily_summary(self, account: AccountSnapshot, portfolio: PortfolioState,
+                        bucket_counts: tuple[int, int, int] | None = None) -> str:
         lines = [
             "📅 DAILY SUMMARY",
             f"💰 Equity: ${account.equity:,.2f}  |  💵 Cash: ${account.cash:,.2f}",
             f"📈 Open positions: {len(portfolio.positions)}/{max_positions_for_equity(account.equity)}",
         ]
+        if bucket_counts:
+            anchor_n, tipranks_n, old_n = bucket_counts
+            lines.append(f"   ⚓ {anchor_n} anchor  ·  🟢 {tipranks_n} TipRanks  ·  🔵 {old_n} signal")
         if portfolio.trading_paused:
             lines.append("⏸️ Status: PAUSED")
         return "\n".join(lines)
