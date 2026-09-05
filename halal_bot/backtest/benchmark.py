@@ -39,13 +39,25 @@ def simulate_dca_benchmark(
 
     shares = 0.0
     values = []
+    invested = False
     for i, price in enumerate(spy_ff):
         if pd.isna(price):
             values.append(float("nan"))
             continue
-        contribution = starting_capital if i == 0 else (
-            monthly_contribution if (monthly_contribution and i % REBALANCE_INTERVAL_TRADING_DAYS == 0) else 0.0
-        )
+        # starting_capital goes in on the first day SPY actually HAS a price,
+        # not rigidly at position 0 -- if the strategy's own equity curve
+        # starts before SPY's fetched history does (real scenario: per-ticker
+        # price_cache files written on different days end up with slightly
+        # different "N years back" windows, see halal_bot.data.prices), day 0
+        # here is NaN and the old i==0 check silently skipped the entire
+        # investment forever, zeroing the whole benchmark.
+        if not invested:
+            contribution = starting_capital
+            invested = True
+        elif monthly_contribution and i % REBALANCE_INTERVAL_TRADING_DAYS == 0:
+            contribution = monthly_contribution
+        else:
+            contribution = 0.0
         if contribution and price > 0:
             shares += contribution / price
         values.append(shares * price)
