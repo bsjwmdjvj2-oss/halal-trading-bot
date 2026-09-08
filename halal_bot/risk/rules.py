@@ -204,6 +204,7 @@ def can_open_new_position(
     dollars: float,
     prices: dict[str, float],
     pending_positions: int = 0,
+    min_total_positions: int = 0,
 ) -> tuple[bool, str]:
     """pending_positions (opt-in, default 0): count of tickers with an order
     already submitted this run (or a prior run, same day) that hasn't shown
@@ -212,12 +213,21 @@ def can_open_new_position(
     same-day re-run (e.g. a manual invocation followed by the scheduled job)
     can otherwise see an under-count of real positions and blow through the
     cap. Backtests never pass this (a fill is instant there, so it's always
-    0 by omission)."""
+    0 by omission).
+
+    min_total_positions (opt-in, default 0): raises the effective cap to at
+    least this many when the equity-scaled table alone would allow fewer --
+    used by halal_bot.live.daily_runner to guarantee room for its fixed
+    2 anchor / 2 TipRanks / 2 signal shape even at equity where the table
+    would otherwise cap lower. No-op (max() is a no-op) once the table
+    itself exceeds this floor, so normal equity-scaling still takes over
+    above that point. Never passed by the backtester or DCA calculator --
+    both keep the table's original behavior unchanged."""
     if portfolio.trading_paused:
         return False, "Trading paused (drawdown threshold breached)"
     if check_drawdown_pause(portfolio.equity(prices), portfolio.equity_peak):
         return False, "Portfolio drawdown pause active"
-    max_positions = max_positions_for_equity(portfolio.equity(prices))
+    max_positions = max(max_positions_for_equity(portfolio.equity(prices)), min_total_positions)
     if len(portfolio.positions) + pending_positions >= max_positions:
         return False, f"At max concurrent positions ({max_positions})"
     if not sector_cap_allows(portfolio, sector, dollars, prices):

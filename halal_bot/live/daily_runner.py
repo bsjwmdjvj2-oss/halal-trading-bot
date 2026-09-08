@@ -165,6 +165,16 @@ class DailyRunner:
         portfolio = _build_portfolio_state(account, state)
         portfolio.trading_paused = manually_paused or auto_paused
 
+        # Fixed 2 anchor / 2 TipRanks / 2 signal shape, per explicit
+        # instruction -- see the "Entries" section below for the full
+        # rationale. Computed here (not just where the entry buckets are
+        # gated) so the anchor buy loop's can_open_new_position call also
+        # respects the same floor.
+        anchor_slots = CONFIG.portfolio.anchor_etf_slots
+        tipranks_slots = 2
+        old_strategy_slots = 2
+        min_total_positions = anchor_slots + tipranks_slots + old_strategy_slots
+
         # --- Fetch latest data + signals per ticker ---
         latest_price: dict[str, float] = {}
         entry_signal: dict[str, bool] = {}
@@ -272,7 +282,8 @@ class DailyRunner:
             dollars = min(max_position_dollars(account.equity), portfolio.cash)
             pending_positions = len(open_order_symbols - portfolio.positions.keys())
             allowed, reason = can_open_new_position(
-                portfolio, sector, dollars, latest_price, pending_positions=pending_positions)
+                portfolio, sector, dollars, latest_price,
+                pending_positions=pending_positions, min_total_positions=min_total_positions)
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
@@ -283,21 +294,19 @@ class DailyRunner:
                                      account.equity, category="anchor_buy"):
                 portfolio.apply_buy(ticker, sector, shares, price)
 
-        # --- Entries: 3-way split of the equity-scaled position cap ---
-        # Anchors claim min(anchor_etf_slots, total_cap) first (handled
-        # above); the remainder splits as evenly as possible between
-        # TipRanks-driven entries and the original technical-signal entries
-        # this bot backtested and validated (golden cross + RSI + volume +
-        # MACD confirmation -- halal_bot.signals.strategy), with TipRanks
-        # rounding up on an odd remainder. Re-derives every run from
-        # max_positions_for_equity(account.equity), so both buckets grow
-        # automatically as the diversification table does (2/1/1 at ~$300
-        # equity today, 2/2/2 once equity crosses $750).
-        total_cap = max_positions_for_equity(account.equity)
-        anchor_slots = min(CONFIG.portfolio.anchor_etf_slots, total_cap)
-        remaining_slots = max(0, total_cap - anchor_slots)
-        tipranks_slots = -(-remaining_slots // 2)  # ceil
-        old_strategy_slots = remaining_slots - tipranks_slots
+        # --- Entries: fixed 2 anchor / 2 TipRanks / 2 signal shape ---
+        # anchor_slots/tipranks_slots/old_strategy_slots/min_total_positions
+        # computed above (right after portfolio is built) -- this is now a
+        # FIXED target, not derived from max_positions_for_equity's
+        # equity-scaled table (that table is untouched for the backtester
+        # and halal_bot.research.dca_calculator -- this override is
+        # live-trading-only). min_total_positions raises the live
+        # position-count floor to 6 so can_open_new_position doesn't block
+        # filling all three buckets even at equity where the table alone
+        # would allow fewer (e.g. today's ~$300-500 equity only tables out
+        # to 4). Above the equity where the table itself exceeds 6 (roughly
+        # $750+), it still governs and additional slots beyond this fixed
+        # 2/2/2 become available -- see can_open_new_position.
 
         held_tipranks = [t for t in portfolio.positions if state.entry_strategy.get(t) == "tipranks"]
         held_old_strategy = [t for t in portfolio.positions if state.entry_strategy.get(t) == "old_strategy"]
@@ -360,7 +369,8 @@ class DailyRunner:
             dollars = min(max_position_dollars(account.equity), portfolio.cash)
             pending_positions = len(open_order_symbols - portfolio.positions.keys())
             allowed, reason = can_open_new_position(
-                portfolio, sector, dollars, latest_price, pending_positions=pending_positions)
+                portfolio, sector, dollars, latest_price,
+                pending_positions=pending_positions, min_total_positions=min_total_positions)
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
@@ -393,7 +403,8 @@ class DailyRunner:
             dollars = min(max_position_dollars(account.equity), portfolio.cash)
             pending_positions = len(open_order_symbols - portfolio.positions.keys())
             allowed, reason = can_open_new_position(
-                portfolio, sector, dollars, latest_price, pending_positions=pending_positions)
+                portfolio, sector, dollars, latest_price,
+                pending_positions=pending_positions, min_total_positions=min_total_positions)
             if not allowed:
                 continue
             shares = position_size_shares(account.equity, price)
@@ -406,7 +417,7 @@ class DailyRunner:
                 held_old_strategy.append(ticker)
 
         anchor_held = len(anchor_tickers & portfolio.positions.keys())
-        summary = self._daily_summary(account, portfolio,
+        summary = self._daily_summary(account, portfolio, min_total_positions=min_total_positions,
                                        bucket_counts=(anchor_held, len(held_tipranks), len(held_old_strategy)))
         self._note(summary)
 
@@ -458,11 +469,13 @@ class DailyRunner:
         return True
 
     def _daily_summary(self, account: AccountSnapshot, portfolio: PortfolioState,
+                        min_total_positions: int = 0,
                         bucket_counts: tuple[int, int, int] | None = None) -> str:
+        effective_cap = max(max_positions_for_equity(account.equity), min_total_positions)
         lines = [
             "📅 DAILY SUMMARY",
             f"💰 Equity: ${account.equity:,.2f}  |  💵 Cash: ${account.cash:,.2f}",
-            f"📈 Open positions: {len(portfolio.positions)}/{max_positions_for_equity(account.equity)}",
+            f"📈 Open positions: {len(portfolio.positions)}/{effective_cap}",
         ]
         if bucket_counts:
             anchor_n, tipranks_n, old_n = bucket_counts
