@@ -62,7 +62,9 @@ class BacktestEngine:
                  vol_sizing: bool = False, trailing_stop: bool = False,
                  monthly_contribution: float = 0.0, rank_entries: bool = False,
                  rank_entries_by_macd: bool = False, min_hold_days: int = 0,
-                 ml_filter: bool = False, ml_threshold: float = 0.5):
+                 ml_filter: bool = False, ml_threshold: float = 0.5,
+                 cash_sweep: bool = False, cash_sweep_ticker: str = "SPSK",
+                 cash_sweep_price_data: pd.DataFrame | None = None):
         """price_data: ticker -> OHLCV DataFrame (already screened as halal-compliant).
         adx_filter, macd_filter, ml_filter, ml_threshold: forwarded to
         generate_signals() — see its docstring. ml_filter replaces the whole
@@ -73,6 +75,32 @@ class BacktestEngine:
         halal_bot.signals.strategy's docstring). Kept as a documented dead
         end, same status as adx_filter/vol_sizing -- not a live option,
         default off.
+
+        cash_sweep (opt-in, default False): sweeps end-of-day idle cash into
+        cash_sweep_ticker (default SPSK, a low-volatility halal sukuk ETF --
+        see halal_bot.portfolio.PortfolioState.sweep_into_reserve), and
+        liquidates it back to cash before the next day's anchor/entry blocks
+        run, so a swept reserve can never block a real position from being
+        funded. cash_sweep_price_data: that ticker's own OHLCV history,
+        fetched separately from price_data -- deliberately not part of the
+        stock-picking universe (see scripts/backtest_cash_sweep.py), required
+        when cash_sweep=True.
+
+        Backtested and REJECTED as built: lost on Sharpe, CAGR, AND max
+        drawdown in every window (full 1.61->1.47 / 21.7%->19.3% / -16.8%->
+        -19.0%; train 1.22->1.08 / 15.1%->13.2%; test 2.15->1.88 / 36.2%->
+        32.1%). Root cause diagnosed, not just observed: the current
+        mechanism liquidates the reserve UNCONDITIONALLY every day before
+        anchor/entries run, regardless of whether that day's entries
+        actually need the cash -- 738 round-trips over 756 trading days
+        (97.6% of days) in the full-sample run. SPSK's own tiny day-to-day
+        price noise, paid on nearly every single day instead of only when
+        cash is genuinely needed, outweighs the modest yield captured. A v2
+        that only liquidates when a real buy candidate actually needs more
+        cash than portfolio.cash already has (rather than unconditionally)
+        is a different, not-yet-tried mechanism -- this verdict covers the
+        as-built version only. Kept default off either way; not a live
+        option as currently implemented.
         vol_sizing, trailing_stop: ATR-based position sizing / ATR-scaled
         trailing stop (halal_bot.risk.rules). Backtested and REJECTED on a
         3-year train/test split — every variant (each alone and combined)
@@ -209,6 +237,21 @@ class BacktestEngine:
                 series = compute_atr_pct(df["High"], df["Low"], df["Close"], period)
                 self.atr_pct_ff[t] = series.reindex(self.master_dates).ffill()
 
+        self.cash_sweep = cash_sweep
+        self.cash_sweep_ticker = cash_sweep_ticker
+        self.reserve_close_ff: pd.Series | None = None
+        if cash_sweep:
+            if cash_sweep_price_data is None or cash_sweep_price_data.empty:
+                raise ValueError("cash_sweep=True requires cash_sweep_price_data")
+            # NOT forward-filled from a NaN-leading start the way close_ff is
+            # for the main universe -- reindex().ffill() alone still leaves
+            # NaN for any master_date before this ticker's own history
+            # begins, exactly the leading-gap failure mode fixed in
+            # halal_bot.backtest.benchmark.simulate_dca_benchmark. Handled at
+            # each call site below by skipping sweep/liquidate on NaN days,
+            # not by pretending a price exists.
+            self.reserve_close_ff = cash_sweep_price_data["Close"].reindex(self.master_dates).ffill()
+
     def _size_multiplier(self, ticker: str, date) -> float:
         if not self.vol_sizing:
             return 1.0
@@ -250,6 +293,10 @@ class BacktestEngine:
         equity_points: list[tuple] = []
         total_contributed = 0.0
         was_paused = False
+        # Reset each call -- same "one engine instance, multiple run() calls
+        # across train/test windows" pattern as everything else here, so
+        # these must not accumulate across windows.
+        self.sweep_stats = {"swept_in": 0.0, "swept_out": 0.0, "events": 0}
 
         trading_dates = [
             d for d in self.master_dates
@@ -260,6 +307,13 @@ class BacktestEngine:
             prices = self._prices_on(date)
             if not prices:
                 continue
+
+            reserve_price = None
+            if self.cash_sweep:
+                p = self.reserve_close_ff.get(date)
+                if p is not None and not pd.isna(p):
+                    reserve_price = float(p)
+                    prices[self.cash_sweep_ticker] = reserve_price
 
             portfolio.update_peak(prices)
             equity = portfolio.equity(prices)
@@ -353,6 +407,16 @@ class BacktestEngine:
                                                  excess_shares, sell_price, pnl,
                                                  "Trimmed to max position size cap"))
 
+            # Liquidate any swept-in reserve BEFORE anchor/entries run, so it
+            # can never block a real position from being funded -- see
+            # PortfolioState.liquidate_reserve and this method's cash_sweep
+            # docstring.
+            if self.cash_sweep and reserve_price is not None:
+                proceeds = portfolio.liquidate_reserve(reserve_price)
+                if proceeds:
+                    self.sweep_stats["swept_out"] += proceeds
+                    self.sweep_stats["events"] += 1
+
             # --- Anchor allocation (SPEC.md Section 3): force-hold configured
             # anchor ETFs at the standard position size, independent of the
             # technical signal — a stability anchor that depends on catching
@@ -424,7 +488,20 @@ class BacktestEngine:
                 trades.append(Trade(str(date.date()), ticker, "buy", shares, buy_price,
                                      reason=self.reason_native[ticker].get(date, "")))
 
-            equity_points.append((date, portfolio.equity(self._prices_on(date))))
+            # Sweep whatever cash is left over (after today's exits/rebalance/
+            # anchor/entries already had first claim on it) into the reserve,
+            # to earn a return instead of sitting idle at 0% -- see
+            # PortfolioState.sweep_into_reserve and this method's cash_sweep
+            # docstring.
+            if self.cash_sweep and reserve_price is not None:
+                swept = portfolio.sweep_into_reserve(self.cash_sweep_ticker, reserve_price)
+                if swept:
+                    self.sweep_stats["swept_in"] += swept
+
+            final_prices = self._prices_on(date)
+            if reserve_price is not None:
+                final_prices[self.cash_sweep_ticker] = reserve_price
+            equity_points.append((date, portfolio.equity(final_prices)))
 
         equity_curve = pd.Series(
             [e for _, e in equity_points], index=[d for d, _ in equity_points], name="equity"
