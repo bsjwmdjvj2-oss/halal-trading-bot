@@ -147,6 +147,19 @@ class TelegramConfig:
 
 
 @dataclass(frozen=True)
+class PythonAnywhereConfig:
+    """PythonAnywhere's account API (https://www.pythonanywhere.com/api/v0/)
+    -- used only by /restart in halal_bot.telegram.bot, to restart the
+    Always-on Task hosting the Telegram bot itself after a `git pull`
+    deploys new code (a long-running process doesn't reload its own already-
+    imported Python modules on its own; it has to actually be restarted).
+    Token from https://www.pythonanywhere.com/account/#api_token."""
+    api_token: str = os.getenv("PYTHONANYWHERE_API_TOKEN", "")
+    username: str = os.getenv("PYTHONANYWHERE_USERNAME", "")
+    base_url: str = "https://www.pythonanywhere.com"
+
+
+@dataclass(frozen=True)
 class Config:
     screening: ScreeningConfig = field(default_factory=ScreeningConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -157,6 +170,7 @@ class Config:
     halal_terminal: HalalTerminalConfig = field(default_factory=HalalTerminalConfig)
     tipranks: TipRanksConfig = field(default_factory=TipRanksConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    pythonanywhere: PythonAnywhereConfig = field(default_factory=PythonAnywhereConfig)
     watchlist_path: Path = ROOT_DIR / "data" / "watchlist.yaml"
     log_dir: Path = ROOT_DIR / "logs"
 

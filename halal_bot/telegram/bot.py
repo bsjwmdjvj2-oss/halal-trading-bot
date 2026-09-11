@@ -131,6 +131,37 @@ def build_application(portfolio_status_fn=None):
         TRADING_STATE.resume()
         await update.message.reply_text("▶️ Trading resumed.")
 
+    async def restart_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Restarts the Always-on Task running THIS bot process, via
+        PythonAnywhere's API -- for picking up a `git pull` deploy without
+        going to the dashboard. Sends the reply BEFORE triggering the
+        restart, since the process (including this handler) goes away
+        shortly after PythonAnywhere actually restarts it."""
+        print("[telegram] /restart received")
+        if not _authorized(update):
+            return
+        from halal_bot.telegram.pythonanywhere_client import (
+            PythonAnywhereAPIError, PythonAnywhereClient, PythonAnywhereNotConfiguredError,
+        )
+        try:
+            client = PythonAnywhereClient()
+        except PythonAnywhereNotConfiguredError as e:
+            await update.message.reply_text(f"⚠️ CONFIG ERROR: {e}")
+            return
+        await update.message.reply_text("🔄 Restarting the bot's Always-on Task...")
+        try:
+            task = client.restart_task_matching("run_telegram_bot.py")
+        except PythonAnywhereAPIError as e:
+            await update.message.reply_text(f"⚠️ Restart failed: {e}")
+            return
+        except Exception as e:
+            log_event("restart_cmd_crashed", str(e))
+            await update.message.reply_text(f"⚠️ Restart request failed: {e}")
+            return
+        # If this send succeeds, the restart hasn't actually killed the
+        # process yet -- PythonAnywhere's restart isn't instant.
+        await update.message.reply_text(f"✅ Restart requested for task #{task.id}: {task.description or task.command}")
+
     invest_lock = asyncio.Lock()
 
     async def invest_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -329,6 +360,7 @@ def build_application(portfolio_status_fn=None):
             BotCommand("news", "TipRanks market pulse & headlines"),
             BotCommand("pause", "Stop opening new positions"),
             BotCommand("resume", "Resume trading"),
+            BotCommand("restart", "Restart the bot (after a git pull deploy)"),
         ])
 
     application = (
@@ -345,6 +377,7 @@ def build_application(portfolio_status_fn=None):
     application.add_handler(CommandHandler("news", news_cmd))
     application.add_handler(CommandHandler("pause", pause_cmd))
     application.add_handler(CommandHandler("resume", resume_cmd))
+    application.add_handler(CommandHandler("restart", restart_cmd))
     return application
 
 
