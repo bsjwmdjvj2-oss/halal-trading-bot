@@ -1,26 +1,26 @@
 {
-  "equity": 302.52,
+  "equity": 302.15,
   "cash": 118.69,
   "holdings": {
     "GOOG": {
       "qty": 0.135417,
       "avg_entry_price": 330.26,
-      "market_value": 45.801428
+      "market_value": 45.591518
     },
     "HLAL": {
       "qty": 0.624319,
       "avg_entry_price": 72.322,
-      "market_value": 45.681796
+      "market_value": 45.706394
     },
     "MU": {
       "qty": 0.048169,
       "avg_entry_price": 930.16,
-      "market_value": 47.131921
+      "market_value": 46.985488
     },
     "SPUS": {
       "qty": 0.770303,
       "avg_entry_price": 58.588,
-      "market_value": 45.212935
+      "market_value": 45.178271
     }
   },
   "equity_history": [
@@ -219,6 +219,104 @@
   ],
   "trades": [
     {
+      "ticker": "BTC/USD",
+      "date": "2026-08-21",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.00193373,
+      "price": 77790.918717143,
+      "notional": 150.42663325090092,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-08-21T10:02:32.707365+00:00"
+    },
+    {
+      "ticker": "SPSK",
+      "date": "2026-08-21",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.741157556,
+      "price": 17.94,
+      "notional": 13.29636655464,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-08-21T13:30:00.361815+00:00"
+    },
+    {
+      "ticker": "MU",
+      "date": "2026-08-21",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.055935288,
+      "price": 989.59,
+      "notional": 55.35300165192,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-08-21T13:30:00.612937+00:00"
+    },
+    {
+      "ticker": "SPUS",
+      "date": "2026-08-21",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.358475894,
+      "price": 58.7,
+      "notional": 21.042534977800003,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-08-21T13:30:00.868931+00:00"
+    },
+    {
+      "ticker": "AVGO",
+      "date": "2026-08-21",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.038661522,
+      "price": 371.36,
+      "notional": 14.357342809919999,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-08-21T13:30:01.561747+00:00"
+    },
+    {
+      "ticker": "TSM",
+      "date": "2026-08-21",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.062993201,
+      "price": 423.0,
+      "notional": 26.646124023,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-08-21T13:30:01.733633+00:00"
+    },
+    {
+      "ticker": "CVX",
+      "date": "2026-08-21",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.08852333,
+      "price": 207.68,
+      "notional": 18.3845251744,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-08-21T13:30:50.085989+00:00"
+    },
+    {
       "timestamp": "2026-08-21T18:47:06.904577+00:00",
       "ticker": "SPUS",
       "date": "2026-08-21",
@@ -301,6 +399,34 @@
       "portfolio_equity": 299.75,
       "pnl": null,
       "dry_run": false
+    },
+    {
+      "ticker": "V",
+      "date": "2026-09-08",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.119324,
+      "price": 368.816,
+      "notional": 44.008600384,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-09-08T16:19:59.667914+00:00"
+    },
+    {
+      "ticker": "MA",
+      "date": "2026-09-08",
+      "action": "sell",
+      "category": "manual",
+      "shares": 0.076762,
+      "price": 568.456,
+      "notional": 43.635819472,
+      "reason": "Placed outside the bot (e.g. Alpaca app) -- filled order, no local log entry",
+      "portfolio_equity": null,
+      "pnl": null,
+      "dry_run": false,
+      "timestamp": "2026-09-08T16:20:04.315011+00:00"
     }
   ],
   "spy_history": [
