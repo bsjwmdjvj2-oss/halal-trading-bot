@@ -45,6 +45,19 @@ def main() -> int:
         # harness). Printing it again here would just echo the run twice.
         run_once(live=live)
         print("=== Daily run completed ===")
+
+        if live:
+            # Best-effort reporting side effect -- must never turn a
+            # successful trading run into a reported failure. See
+            # scripts/update_dashboard_snapshot.py for why this writes a
+            # committed file instead of calling a live endpoint.
+            try:
+                from scripts.update_dashboard_snapshot import main as update_snapshot
+                update_snapshot()
+            except Exception as e:
+                print(f"(dashboard snapshot update failed, non-fatal: {e})", file=sys.stderr)
+                log_event("dashboard_snapshot_failed", str(e))
+
         return 0
     except AlpacaNotConfiguredError as e:
         print(f"CONFIG ERROR: {e}", file=sys.stderr)

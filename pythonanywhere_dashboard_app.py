@@ -1,44 +1,37 @@
-"""Minimal read-only Flask app for the TradeVant Snapshot dashboard's
-automated refresh (see /Users/farisalmazrouei/.claude/plans/witty-juggling-mango.md).
+"""Minimal read-only Flask app exposing the same dashboard data
+scripts/update_dashboard_snapshot.py commits to the repo (both call
+halal_bot.live.dashboard_data.build_dashboard_snapshot()).
 
 Deployed as a PythonAnywhere Web App (a separate resource from the existing
 Always-on Task and Scheduled Task) -- its WSGI config file imports `app`
-from this module. A single authenticated route serves exactly what the
-Portfolio P&L panel needs: live equity/cash/holdings (from AlpacaClient,
-the same client every other live code path in this repo uses), the
-on-disk equity-history and trade logs (halal_bot.logging_utils' own output
-files), and a year of SPY closes (halal_bot.data.prices.fetch_history, same
-yfinance source every backtest in this repo already uses) for the S&P
-comparison line -- so a scheduled cloud routine (which only has WebFetch/
-Artifact, no market-data tool of its own) can fetch one JSON blob instead
-of a human running a one-liner and pasting the result, as happened manually
-several times this session.
+from this module.
+
+NOTE on role: this was originally meant to be the TradeVant Snapshot
+dashboard automation's data source, fetched directly by a scheduled cloud
+routine. That routine's sandboxed network egress turned out to reject
+arbitrary custom domains (org policy, verified by a real failed run) --
+GitHub access worked fine, so the automation now reads a committed
+data/dashboard_snapshot.json from the cloned repo instead (see
+scripts/update_dashboard_snapshot.py). This endpoint is kept as a live,
+on-demand way to check the same data manually (e.g. via curl) without
+waiting for the next scheduled snapshot -- not load-bearing for the
+automation itself anymore.
 
 Read-only. No write/trading endpoint exists here or ever should -- this app
 must never be able to place an order, only report on the account.
 """
 from __future__ import annotations
 
-import glob
-import json
 import os
-from pathlib import Path
 
 from flask import Flask, abort, jsonify, request
 
-from halal_bot.broker.alpaca_client import AlpacaClient, AlpacaNotConfiguredError
-from halal_bot.config import CONFIG
+from halal_bot.broker.alpaca_client import AlpacaNotConfiguredError
+from halal_bot.live.dashboard_data import build_dashboard_snapshot
 
 app = Flask(__name__)
 
 DASHBOARD_API_TOKEN = os.getenv("DASHBOARD_API_TOKEN", "")
-
-
-def _read_jsonl(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    with open(path) as f:
-        return [json.loads(line) for line in f if line.strip()]
 
 
 @app.route("/dashboard-data")
@@ -47,34 +40,9 @@ def dashboard_data():
         abort(403)
 
     try:
-        account = AlpacaClient().get_account_snapshot()
+        return jsonify(build_dashboard_snapshot())
     except AlpacaNotConfiguredError as e:
         return jsonify({"error": str(e)}), 500
-
-    equity_history = _read_jsonl(CONFIG.log_dir / "equity_history.jsonl")
-    trades = []
-    for path in sorted(glob.glob(str(CONFIG.log_dir / "trades_*.jsonl"))):
-        trades.extend(_read_jsonl(Path(path)))
-
-    # Deferred import: keeps yfinance off the request path for anyone hitting
-    # this route before it's needed, same reasoning as AlpacaClient's own
-    # deferred alpaca-py import.
-    from halal_bot.data.prices import fetch_history
-
-    spy = fetch_history("SPY", period_years=1)
-    spy_history = (
-        [{"date": str(d.date()), "close": round(float(c), 4)} for d, c in spy["Close"].items()]
-        if not spy.empty else []
-    )
-
-    return jsonify({
-        "equity": account.equity,
-        "cash": account.cash,
-        "holdings": account.positions,
-        "equity_history": equity_history,
-        "trades": trades,
-        "spy_history": spy_history,
-    })
 
 
 if __name__ == "__main__":
