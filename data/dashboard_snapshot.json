@@ -1,11 +1,11 @@
 {
-  "equity": 302.15,
+  "equity": 302.13,
   "cash": 118.69,
   "holdings": {
     "GOOG": {
       "qty": 0.135417,
       "avg_entry_price": 330.26,
-      "market_value": 45.591518
+      "market_value": 45.576
     },
     "HLAL": {
       "qty": 0.624319,
@@ -15,7 +15,7 @@
     "MU": {
       "qty": 0.048169,
       "avg_entry_price": 930.16,
-      "market_value": 46.985488
+      "market_value": 46.976095
     },
     "SPUS": {
       "qty": 0.770303,
