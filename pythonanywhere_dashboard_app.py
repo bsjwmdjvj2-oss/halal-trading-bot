@@ -5,10 +5,13 @@ Deployed as a PythonAnywhere Web App (a separate resource from the existing
 Always-on Task and Scheduled Task) -- its WSGI config file imports `app`
 from this module. A single authenticated route serves exactly what the
 Portfolio P&L panel needs: live equity/cash/holdings (from AlpacaClient,
-the same client every other live code path in this repo uses) plus the
+the same client every other live code path in this repo uses), the
 on-disk equity-history and trade logs (halal_bot.logging_utils' own output
-files) -- so a scheduled cloud routine can fetch one JSON blob instead of a
-human running a one-liner and pasting the result, as happened manually
+files), and a year of SPY closes (halal_bot.data.prices.fetch_history, same
+yfinance source every backtest in this repo already uses) for the S&P
+comparison line -- so a scheduled cloud routine (which only has WebFetch/
+Artifact, no market-data tool of its own) can fetch one JSON blob instead
+of a human running a one-liner and pasting the result, as happened manually
 several times this session.
 
 Read-only. No write/trading endpoint exists here or ever should -- this app
@@ -53,12 +56,24 @@ def dashboard_data():
     for path in sorted(glob.glob(str(CONFIG.log_dir / "trades_*.jsonl"))):
         trades.extend(_read_jsonl(Path(path)))
 
+    # Deferred import: keeps yfinance off the request path for anyone hitting
+    # this route before it's needed, same reasoning as AlpacaClient's own
+    # deferred alpaca-py import.
+    from halal_bot.data.prices import fetch_history
+
+    spy = fetch_history("SPY", period_years=1)
+    spy_history = (
+        [{"date": str(d.date()), "close": round(float(c), 4)} for d, c in spy["Close"].items()]
+        if not spy.empty else []
+    )
+
     return jsonify({
         "equity": account.equity,
         "cash": account.cash,
         "holdings": account.positions,
         "equity_history": equity_history,
         "trades": trades,
+        "spy_history": spy_history,
     })
 
 
