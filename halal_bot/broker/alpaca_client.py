@@ -79,6 +79,35 @@ class AlpacaClient:
         orders = self._client.get_orders(filter=GetOrdersRequest(status=QueryOrderStatus.OPEN))
         return {o.symbol for o in orders}
 
+    def get_filled_orders(self, after: str) -> list[dict]:
+        """Real filled-order history straight from Alpaca (not this bot's own
+        logs/trades_*.jsonl) -- the authoritative record of what actually
+        happened on the account, including orders placed manually outside
+        the bot (e.g. via the Alpaca app), which never call log_trade() and
+        so are otherwise invisible to anything reading only the local log.
+
+        `after` is an ISO date ("YYYY-MM-DD"); only orders filled on/after
+        that date are returned, oldest first.
+        """
+        from alpaca.trading.enums import QueryOrderStatus
+        from alpaca.trading.requests import GetOrdersRequest
+
+        orders = self._client.get_orders(
+            filter=GetOrdersRequest(status=QueryOrderStatus.CLOSED, limit=500, after=after)
+        )
+        filled = [o for o in orders if o.filled_at is not None]
+        return [
+            {
+                "ticker": o.symbol,
+                "date": o.filled_at.date().isoformat(),
+                "action": "buy" if o.side.value == "buy" else "sell",
+                "shares": float(o.filled_qty),
+                "price": float(o.filled_avg_price),
+                "timestamp": o.filled_at.isoformat(),
+            }
+            for o in sorted(filled, key=lambda o: o.filled_at)
+        ]
+
     def submit_market_order(self, ticker: str, qty: float, side: str) -> str:
         """side: 'buy' | 'sell'. qty may be fractional -- Alpaca accepts a
         fractional qty directly on market orders (time_in_force=DAY, already
