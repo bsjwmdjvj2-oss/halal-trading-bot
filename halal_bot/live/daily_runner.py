@@ -33,8 +33,8 @@ from halal_bot.risk.rules import (
     can_open_new_position,
     check_drawdown_pause,
     check_exit_risk,
+    effective_position_cap,
     max_position_dollars,
-    max_positions_for_equity,
     position_size_shares,
 )
 from halal_bot.screening.rules import screen_universe
@@ -165,14 +165,14 @@ class DailyRunner:
         portfolio = _build_portfolio_state(account, state)
         portfolio.trading_paused = manually_paused or auto_paused
 
-        # Fixed 2 anchor / 2 TipRanks / 2 signal shape, per explicit
-        # instruction -- see the "Entries" section below for the full
-        # rationale. Computed here (not just where the entry buckets are
-        # gated) so the anchor buy loop's can_open_new_position call also
-        # respects the same floor.
+        # Fixed anchor / TipRanks / signal shape (CONFIG.portfolio, default
+        # 2/2/2), per explicit instruction -- see the "Entries" section
+        # below for the full rationale. Computed here (not just where the
+        # entry buckets are gated) so the anchor buy loop's
+        # can_open_new_position call also respects the same floor.
         anchor_slots = CONFIG.portfolio.anchor_etf_slots
-        tipranks_slots = 2
-        old_strategy_slots = 2
+        tipranks_slots = CONFIG.portfolio.tipranks_entry_slots
+        old_strategy_slots = CONFIG.portfolio.signal_entry_slots
         min_total_positions = anchor_slots + tipranks_slots + old_strategy_slots
 
         # --- Fetch latest data + signals per ticker ---
@@ -417,8 +417,8 @@ class DailyRunner:
                 held_old_strategy.append(ticker)
 
         anchor_held = len(anchor_tickers & portfolio.positions.keys())
-        summary = self._daily_summary(account, portfolio, min_total_positions=min_total_positions,
-                                       bucket_counts=(anchor_held, len(held_tipranks), len(held_old_strategy)))
+        summary = self._daily_summary(
+            account, portfolio, bucket_counts=(anchor_held, len(held_tipranks), len(held_old_strategy)))
         self._note(summary)
 
         if self.live:
@@ -469,13 +469,11 @@ class DailyRunner:
         return True
 
     def _daily_summary(self, account: AccountSnapshot, portfolio: PortfolioState,
-                        min_total_positions: int = 0,
                         bucket_counts: tuple[int, int, int] | None = None) -> str:
-        effective_cap = max(max_positions_for_equity(account.equity), min_total_positions)
         lines = [
             "📅 DAILY SUMMARY",
             f"💰 Equity: ${account.equity:,.2f}  |  💵 Cash: ${account.cash:,.2f}",
-            f"📈 Open positions: {len(portfolio.positions)}/{effective_cap}",
+            f"📈 Open positions: {len(portfolio.positions)}/{effective_position_cap(account.equity)}",
         ]
         if bucket_counts:
             anchor_n, tipranks_n, old_n = bucket_counts

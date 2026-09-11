@@ -31,13 +31,18 @@ class ScreeningConfig:
 
 @dataclass(frozen=True)
 class PortfolioConfig:
-    # Concurrent-position cap is NOT a flat number here -- it follows the
-    # diversification table in halal_bot.risk.rules.max_positions_for_equity
-    # ($300 equity -> 4 positions, up to 20 at $7,500+), the same table
-    # halal_bot.research.dca_calculator uses for "how many stocks should
-    # this month's contribution spread across".
+    # The backtester and halal_bot.research.dca_calculator both size purely
+    # off the diversification table in halal_bot.risk.rules.max_positions_for_equity
+    # ($300 equity -> 4 positions, up to 20 at $7,500+). Live trading
+    # (halal_bot.live.daily_runner) instead targets a FIXED shape --
+    # anchor_etf_slots + tipranks_entry_slots + signal_entry_slots, always --
+    # and floors the table at that total via
+    # halal_bot.risk.rules.effective_position_cap(), so the table still takes
+    # back over once equity grows past the fixed total (~$750+ today).
     anchor_etf_slots: int = 2              # slots reserved for broad halal ETFs
     anchor_etf_tickers: tuple[str, ...] = ("SPUS", "HLAL")
+    tipranks_entry_slots: int = 2          # live-only fixed shape, see above
+    signal_entry_slots: int = 2            # live-only fixed shape, see above
     rebalance_interval_days: int = 30      # monthly rebalance
     strategy_review_interval_days: int = 90  # quarterly review
 

@@ -59,6 +59,23 @@ def max_positions_for_equity(equity: float) -> int:
     return _POSITION_COUNT_TABLE[-1][2]  # above $10,000 -- hold at the top tier
 
 
+def effective_position_cap(equity: float) -> int:
+    """Live-trading-only effective position cap: the equity-scaled table,
+    floored at CONFIG.portfolio's fixed anchor/TipRanks/signal shape
+    (anchor_etf_slots + tipranks_entry_slots + signal_entry_slots, default
+    2+2+2=6) -- see halal_bot.live.daily_runner for where this shape is
+    actually enforced (can_open_new_position's min_total_positions param).
+    This function exists so every surface that DISPLAYS the cap (the daily
+    summary, /status) shows the same number instead of each recomputing it
+    independently and drifting out of sync, as telegram/bot.py's /status
+    once did after the fixed shape was introduced. The backtester and
+    halal_bot.research.dca_calculator call max_positions_for_equity()
+    directly, unaffected by this floor -- it's live-display-only."""
+    p = CONFIG.portfolio
+    fixed_shape_total = p.anchor_etf_slots + p.tipranks_entry_slots + p.signal_entry_slots
+    return max(max_positions_for_equity(equity), fixed_shape_total)
+
+
 def position_size_shares(equity: float, price: float, size_multiplier: float = 1.0) -> float:
     """Fractional shares affordable within the max-position-size cap (Alpaca
     supports fractional-share market orders; rounded to 6 decimal places,
