@@ -1,26 +1,26 @@
 {
-  "equity": 310.61,
+  "equity": 311.25,
   "cash": 119.07,
   "holdings": {
     "GOOG": {
       "qty": 0.135417,
       "avg_entry_price": 330.26,
-      "market_value": 46.089176
+      "market_value": 46.52251
     },
     "HLAL": {
       "qty": 0.624319,
       "avg_entry_price": 72.322,
-      "market_value": 47.198454
+      "market_value": 47.629297
     },
     "MU": {
       "qty": 0.048169,
       "avg_entry_price": 930.16,
-      "market_value": 51.776376
+      "market_value": 51.184379
     },
     "SPUS": {
       "qty": 0.770303,
       "avg_entry_price": 58.588,
-      "market_value": 46.47238
+      "market_value": 46.842125
     }
   },
   "equity_history": [
@@ -358,6 +358,12 @@
       "timestamp": "2026-10-04T21:30:46.241353+00:00",
       "date": "2026-10-04",
       "equity": 310.61,
+      "cash": 119.07
+    },
+    {
+      "timestamp": "2026-10-05T21:30:53.075050+00:00",
+      "date": "2026-10-05",
+      "equity": 311.25,
       "cash": 119.07
     }
   ],
