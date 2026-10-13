@@ -1,26 +1,26 @@
 {
-  "equity": 307.82,
+  "equity": 306.47,
   "cash": 119.07,
   "holdings": {
     "GOOG": {
       "qty": 0.135417,
       "avg_entry_price": 330.26,
-      "market_value": 47.299303
+      "market_value": 47.378346
     },
     "HLAL": {
       "qty": 0.624319,
       "avg_entry_price": 72.322,
-      "market_value": 47.32338
+      "market_value": 47.454487
     },
     "MU": {
       "qty": 0.048169,
       "avg_entry_price": 930.16,
-      "market_value": 47.44541
+      "market_value": 45.997541
     },
     "SPUS": {
       "qty": 0.770303,
       "avg_entry_price": 58.588,
-      "market_value": 46.680362
+      "market_value": 46.569053
     }
   },
   "equity_history": [
@@ -407,6 +407,12 @@
       "date": "2026-10-12",
       "equity": 307.82,
       "cash": 119.07
+    },
+    {
+      "timestamp": "2026-10-13T21:30:51.528553+00:00",
+      "date": "2026-10-13",
+      "equity": 306.47,
+      "cash": 119.07
     }
   ],
   "trades": [
@@ -619,6 +625,20 @@
       "pnl": null,
       "dry_run": false,
       "timestamp": "2026-09-08T16:20:04.315011+00:00"
+    },
+    {
+      "timestamp": "2026-10-13T21:30:51.520561+00:00",
+      "ticker": "STRL",
+      "date": "2026-10-13",
+      "action": "buy",
+      "category": "buy",
+      "shares": 0.12293,
+      "price": 498.6099853515625,
+      "notional": 61.29412549926758,
+      "reason": "golden cross (sma20=513.01 > sma50=512.08), rsi=45.9 < 70.0, volume=582681 > 1.06x avg(541544), macd_hist=0.13 > 0",
+      "portfolio_equity": 306.47,
+      "pnl": null,
+      "dry_run": false
     }
   ],
   "spy_history": [
