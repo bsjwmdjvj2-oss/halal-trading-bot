@@ -1,31 +1,31 @@
 {
-  "equity": 298.24,
+  "equity": 291.42,
   "cash": 59.6,
   "holdings": {
     "GOOG": {
       "qty": 0.135417,
       "avg_entry_price": 330.26,
-      "market_value": 46.640323
+      "market_value": 45.632821
     },
     "HLAL": {
       "qty": 0.624319,
       "avg_entry_price": 72.322,
-      "market_value": 46.474306
+      "market_value": 45.881203
     },
     "MU": {
       "qty": 0.048169,
       "avg_entry_price": 930.16,
-      "market_value": 44.666285
+      "market_value": 42.383903
     },
     "SPUS": {
       "qty": 0.770303,
       "avg_entry_price": 58.588,
-      "market_value": 45.998567
+      "market_value": 45.563422
     },
     "STRL": {
       "qty": 0.12293,
       "avg_entry_price": 483.65,
-      "market_value": 54.857513
+      "market_value": 52.363263
     }
   },
   "equity_history": [
@@ -430,6 +430,12 @@
       "date": "2026-10-15",
       "equity": 298.24,
       "cash": 59.6
+    },
+    {
+      "timestamp": "2026-10-16T21:30:48.838534+00:00",
+      "date": "2026-10-16",
+      "equity": 291.42,
+      "cash": 59.6
     }
   ],
   "trades": [
@@ -654,6 +660,34 @@
       "notional": 61.29412549926758,
       "reason": "golden cross (sma20=513.01 > sma50=512.08), rsi=45.9 < 70.0, volume=582681 > 1.06x avg(541544), macd_hist=0.13 > 0",
       "portfolio_equity": 306.47,
+      "pnl": null,
+      "dry_run": false
+    },
+    {
+      "timestamp": "2026-10-16T21:30:48.794395+00:00",
+      "ticker": "STRL",
+      "date": "2026-10-16",
+      "action": "sell",
+      "category": "signal_exit",
+      "shares": 0.12293,
+      "price": 424.3599853515625,
+      "notional": 52.16657299926758,
+      "reason": "death cross (sma20=503.84 < sma50=506.28)",
+      "portfolio_equity": 291.42,
+      "pnl": -7.288521500732419,
+      "dry_run": false
+    },
+    {
+      "timestamp": "2026-10-16T21:30:48.834132+00:00",
+      "ticker": "ECL",
+      "date": "2026-10-16",
+      "action": "buy",
+      "category": "buy",
+      "shares": 0.201752,
+      "price": 288.8900146484375,
+      "notional": 58.284138235351556,
+      "reason": "golden cross (sma20=279.62 > sma50=279.35), rsi=63.6 < 70.0, volume=3400439 > 1.06x avg(1258942), macd_hist=1.49 > 0",
+      "portfolio_equity": 291.42,
       "pnl": null,
       "dry_run": false
     }
