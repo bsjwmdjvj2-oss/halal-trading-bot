@@ -1,31 +1,21 @@
 {
-  "equity": 289.58,
-  "cash": 55.68,
+  "equity": 293.65,
+  "cash": 142.52,
   "holdings": {
     "ECL": {
       "qty": 0.201752,
       "avg_entry_price": 287.35,
-      "market_value": 58.211505
-    },
-    "GOOG": {
-      "qty": 0.135417,
-      "avg_entry_price": 330.26,
-      "market_value": 42.965106
+      "market_value": 58.764305
     },
     "HLAL": {
       "qty": 0.624319,
       "avg_entry_price": 72.322,
-      "market_value": 45.269371
-    },
-    "MU": {
-      "qty": 0.048169,
-      "avg_entry_price": 930.16,
-      "market_value": 42.270706
+      "market_value": 46.20485
     },
     "SPUS": {
       "qty": 0.770303,
       "avg_entry_price": 58.588,
-      "market_value": 45.185974
+      "market_value": 46.156556
     }
   },
   "equity_history": [
@@ -490,6 +480,12 @@
       "date": "2026-10-25",
       "equity": 289.58,
       "cash": 55.68
+    },
+    {
+      "timestamp": "2026-10-27T21:30:49.819330+00:00",
+      "date": "2026-10-27",
+      "equity": 293.65,
+      "cash": 142.52
     }
   ],
   "trades": [
@@ -742,6 +738,48 @@
       "notional": 58.284138235351556,
       "reason": "golden cross (sma20=279.62 > sma50=279.35), rsi=63.6 < 70.0, volume=3400439 > 1.06x avg(1258942), macd_hist=1.49 > 0",
       "portfolio_equity": 291.42,
+      "pnl": null,
+      "dry_run": false
+    },
+    {
+      "timestamp": "2026-10-26T21:30:51.144196+00:00",
+      "ticker": "GOOG",
+      "date": "2026-10-26",
+      "action": "sell",
+      "category": "signal_exit",
+      "shares": 0.135417,
+      "price": 314.19000244140625,
+      "notional": 42.546667560607915,
+      "reason": "death cross (sma20=338.28 < sma50=338.94)",
+      "portfolio_equity": 291.6,
+      "pnl": -2.176150859392089,
+      "dry_run": false
+    },
+    {
+      "timestamp": "2026-10-26T21:30:51.168202+00:00",
+      "ticker": "MU",
+      "date": "2026-10-26",
+      "action": "sell",
+      "category": "signal_exit",
+      "shares": 0.048169,
+      "price": 903.7000122070312,
+      "notional": 43.53032588800048,
+      "reason": "death cross (sma20=979.09 < sma50=981.24)",
+      "portfolio_equity": 291.6,
+      "pnl": -1.27455115199951,
+      "dry_run": false
+    },
+    {
+      "timestamp": "2026-10-27T21:30:49.810742+00:00",
+      "ticker": "MA",
+      "date": "2026-10-27",
+      "action": "buy",
+      "category": "tipranks_buy",
+      "shares": 0.096302,
+      "price": 609.8499755859375,
+      "notional": 58.72977234887695,
+      "reason": "",
+      "portfolio_equity": 293.65,
       "pnl": null,
       "dry_run": false
     }
