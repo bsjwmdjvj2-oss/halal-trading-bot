@@ -1,26 +1,26 @@
 {
-  "equity": 295.21,
-  "cash": 84.17,
+  "equity": 297.35,
+  "cash": 84.18,
   "holdings": {
     "ECL": {
       "qty": 0.201752,
       "avg_entry_price": 287.35,
-      "market_value": 59.456314
+      "market_value": 60.699107
     },
     "HLAL": {
       "qty": 0.624319,
       "avg_entry_price": 72.322,
-      "market_value": 46.218336
+      "market_value": 45.311075
     },
     "MA": {
       "qty": 0.096302,
       "avg_entry_price": 605.97,
-      "market_value": 59.230545
+      "market_value": 61.478667
     },
     "SPUS": {
       "qty": 0.770303,
       "avg_entry_price": 58.588,
-      "market_value": 46.129903
+      "market_value": 45.678968
     }
   },
   "equity_history": [
@@ -497,6 +497,12 @@
       "date": "2026-10-28",
       "equity": 295.26,
       "cash": 84.17
+    },
+    {
+      "timestamp": "2026-10-29T21:30:54.568151+00:00",
+      "date": "2026-10-29",
+      "equity": 297.35,
+      "cash": 84.18
     }
   ],
   "trades": [
@@ -791,6 +797,20 @@
       "notional": 58.72977234887695,
       "reason": "",
       "portfolio_equity": 293.65,
+      "pnl": null,
+      "dry_run": false
+    },
+    {
+      "timestamp": "2026-10-29T21:30:54.560966+00:00",
+      "ticker": "CSX",
+      "date": "2026-10-29",
+      "action": "buy",
+      "category": "buy",
+      "shares": 1.1384,
+      "price": 52.2400016784668,
+      "notional": 59.47001791076661,
+      "reason": "golden cross (sma20=48.98 > sma50=48.82), rsi=69.9 < 70.0, volume=12535462 > 1.06x avg(10444403), macd_hist=0.50 > 0",
+      "portfolio_equity": 297.35,
       "pnl": null,
       "dry_run": false
     }
