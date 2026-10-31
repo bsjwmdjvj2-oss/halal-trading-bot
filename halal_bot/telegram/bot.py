@@ -95,6 +95,29 @@ async def send_alert(message: str) -> None:
     await bot.send_message(chat_id=CONFIG.telegram.chat_id, text=message)
 
 
+async def run_git_pull(cwd=None) -> tuple[bool, str]:
+    """`git pull --ff-only` in the checkout this bot runs from. ff-only so it
+    never creates a merge commit on the live trading box -- a diverged
+    checkout fails with git's own message instead. Fixed arguments; nothing
+    from Telegram reaches the command line."""
+    from halal_bot.config import ROOT_DIR
+
+    proc = await asyncio.create_subprocess_exec(
+        "git", "pull", "--ff-only",
+        cwd=cwd or ROOT_DIR,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},  # never hang on a credential prompt
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return False, "git pull timed out after 60s"
+    return proc.returncode == 0, out.decode(errors="replace").strip()
+
+
 def build_application(portfolio_status_fn=None):
     """portfolio_status_fn: callable returning a plain-English status string (holdings + P&L).
     Defaults to `default_status_fn` (live Alpaca snapshot) if not supplied.
@@ -104,8 +127,8 @@ def build_application(portfolio_status_fn=None):
     """
     _require_config()
     portfolio_status_fn = portfolio_status_fn or default_status_fn
-    from telegram import BotCommand, Update
-    from telegram.ext import Application, CommandHandler, ContextTypes
+    from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+    from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
     def _authorized(update: Update) -> bool:
         incoming = str(update.effective_chat.id)
@@ -137,36 +160,70 @@ def build_application(portfolio_status_fn=None):
         TRADING_STATE.resume()
         await update.message.reply_text("▶️ Trading resumed.")
 
-    async def restart_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _restart(message) -> None:
         """Restarts the Always-on Task running THIS bot process, via
         PythonAnywhere's API -- for picking up a `git pull` deploy without
         going to the dashboard. Sends the reply BEFORE triggering the
         restart, since the process (including this handler) goes away
         shortly after PythonAnywhere actually restarts it."""
-        print("[telegram] /restart received")
-        if not _authorized(update):
-            return
         from halal_bot.telegram.pythonanywhere_client import (
             PythonAnywhereAPIError, PythonAnywhereClient, PythonAnywhereNotConfiguredError,
         )
         try:
             client = PythonAnywhereClient()
         except PythonAnywhereNotConfiguredError as e:
-            await update.message.reply_text(f"⚠️ CONFIG ERROR: {e}")
+            await message.reply_text(f"⚠️ CONFIG ERROR: {e}")
             return
-        await update.message.reply_text("🔄 Restarting the bot's Always-on Task...")
+        await message.reply_text("🔄 Restarting the bot's Always-on Task...")
         try:
             task = client.restart_task_matching("run_telegram_bot.py")
         except PythonAnywhereAPIError as e:
-            await update.message.reply_text(f"⚠️ Restart failed: {e}")
+            await message.reply_text(f"⚠️ Restart failed: {e}")
             return
         except Exception as e:
             log_event("restart_cmd_crashed", str(e))
-            await update.message.reply_text(f"⚠️ Restart request failed: {e}")
+            await message.reply_text(f"⚠️ Restart request failed: {e}")
             return
         # If this send succeeds, the restart hasn't actually killed the
         # process yet -- PythonAnywhere's restart isn't instant.
-        await update.message.reply_text(f"✅ Restart requested: {task.description or task.command}")
+        await message.reply_text(f"✅ Restart requested: {task.description or task.command}")
+
+    async def restart_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("[telegram] /restart received")
+        if not _authorized(update):
+            return
+        await _restart(update.message)
+
+    async def restart_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("[telegram] restart button pressed")
+        if not _authorized(update):
+            return
+        query = update.callback_query
+        await query.answer()
+        await query.edit_message_reply_markup(reply_markup=None)  # no double-tap
+        await _restart(query.message)
+
+    async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """`git pull` on the PythonAnywhere checkout this bot runs from. New
+        code only takes effect after a restart, so a pull that actually
+        changed something offers a restart button."""
+        print("[telegram] /update received")
+        if not _authorized(update):
+            return
+        await update.message.reply_text("⬇️ Pulling latest code...")
+        ok, output = await run_git_pull()
+        output = output[-1500:]  # git's summary is at the end
+        if not ok:
+            await update.message.reply_text(f"⚠️ git pull failed:\n{output}")
+        elif "Already up to date" in output:
+            await update.message.reply_text("✅ Already up to date.")
+        else:
+            await update.message.reply_text(
+                f"✅ Pulled:\n{output}\n\nRestart to load it.",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔄 Restart bot now", callback_data="restart")]]
+                ),
+            )
 
     invest_lock = asyncio.Lock()
 
@@ -366,6 +423,7 @@ def build_application(portfolio_status_fn=None):
             BotCommand("news", "TipRanks market pulse & headlines"),
             BotCommand("pause", "Stop opening new positions"),
             BotCommand("resume", "Resume trading"),
+            BotCommand("update", "Pull the latest code (git pull)"),
             BotCommand("restart", "Restart the bot (after a git pull deploy)"),
         ])
 
@@ -383,7 +441,9 @@ def build_application(portfolio_status_fn=None):
     application.add_handler(CommandHandler("news", news_cmd))
     application.add_handler(CommandHandler("pause", pause_cmd))
     application.add_handler(CommandHandler("resume", resume_cmd))
+    application.add_handler(CommandHandler("update", update_cmd))
     application.add_handler(CommandHandler("restart", restart_cmd))
+    application.add_handler(CallbackQueryHandler(restart_button, pattern="^restart$"))
     return application
 
 
