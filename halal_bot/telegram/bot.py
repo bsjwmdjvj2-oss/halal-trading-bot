@@ -166,7 +166,7 @@ def build_application(portfolio_status_fn=None):
             return
         # If this send succeeds, the restart hasn't actually killed the
         # process yet -- PythonAnywhere's restart isn't instant.
-        await update.message.reply_text(f"✅ Restart requested for task #{task.id}: {task.description or task.command}")
+        await update.message.reply_text(f"✅ Restart requested: {task.description or task.command}")
 
     invest_lock = asyncio.Lock()
 
