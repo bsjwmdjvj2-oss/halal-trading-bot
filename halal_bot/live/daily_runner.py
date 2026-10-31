@@ -18,6 +18,7 @@ from datetime import date, datetime, timezone
 
 from halal_bot.broker.alpaca_client import AccountSnapshot, AlpacaClient
 from halal_bot.config import CONFIG
+from halal_bot.dashboard.data import total_pnl_line
 from halal_bot.data.prices import fetch_history
 from halal_bot.live.state_store import LiveState, load_state, save_state
 from halal_bot.logging_utils import (
@@ -473,8 +474,11 @@ class DailyRunner:
         lines = [
             "📅 DAILY SUMMARY",
             f"💰 Equity: ${account.equity:,.2f}  |  💵 Cash: ${account.cash:,.2f}",
-            f"📈 Open positions: {len(portfolio.positions)}/{effective_position_cap(account.equity)}",
         ]
+        pnl_line = total_pnl_line(account.equity)
+        if pnl_line:
+            lines.append(pnl_line)
+        lines.append(f"📈 Open positions: {len(portfolio.positions)}/{effective_position_cap(account.equity)}")
         if bucket_counts:
             anchor_n, tipranks_n, old_n = bucket_counts
             lines.append(f"   ⚓ {anchor_n} anchor  ·  🟢 {tipranks_n} TipRanks  ·  🔵 {old_n} signal")

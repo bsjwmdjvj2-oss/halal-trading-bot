@@ -32,6 +32,24 @@ def load_equity_history() -> pd.Series:
     return df.set_index("date")["equity"].sort_index()
 
 
+def total_pnl_line(current_equity: float) -> str | None:
+    """One-line total P/L ($ and %) vs. the first logged equity day -- the same
+    baseline /dashboard's "Total return" and the web dashboard use, so every
+    surface reports one number. None when there's no history yet.
+
+    Deposits/withdrawals aren't tracked (Alpaca's trading API exposes no
+    transfer history), so cash added to the account would read as profit."""
+    equity = load_equity_history()
+    if equity.empty or float(equity.iloc[0]) <= 0:
+        return None
+    baseline = float(equity.iloc[0])
+    pnl = current_equity - baseline
+    return (
+        f"📈 Total P/L: {'+' if pnl >= 0 else '-'}${abs(pnl):,.2f} "
+        f"({pnl / baseline * 100:+.2f}%) since {equity.index[0]:%b %-d}"
+    )
+
+
 def load_all_trades() -> pd.DataFrame:
     """Concatenates every logs/trades_*.jsonl file. Empty DataFrame if none exist."""
     paths = sorted(CONFIG.log_dir.glob("trades_*.jsonl"))

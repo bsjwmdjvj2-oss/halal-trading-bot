@@ -91,7 +91,9 @@ def build_dashboard_snapshot() -> dict:
     # deferred alpaca-py import.
     from halal_bot.data.prices import fetch_history
 
-    spy = fetch_history("SPY", period_years=1)
+    # use_cache=False: the on-disk price cache never expires, so the cached
+    # SPY series stayed frozen at the day it was first fetched.
+    spy = fetch_history("SPY", period_years=1, use_cache=False)
     spy_history = (
         [{"date": str(d.date()), "close": round(float(c), 4)} for d, c in spy["Close"].items()]
         if not spy.empty else []

@@ -90,8 +90,9 @@ def render_text(dashboard: Dashboard | None) -> str:
 
     m = dashboard.metrics
     if m:
+        total_pnl = float(dashboard.equity_curve.iloc[-1] - dashboard.equity_curve.iloc[0])
         lines += [
-            f"Total return:  {m.total_return_pct:+.2f}%",
+            f"Total return:  {m.total_return_pct:+.2f}% ({'+' if total_pnl >= 0 else '-'}${abs(total_pnl):,.2f})",
             f"CAGR:          {m.cagr_pct:+.2f}%",
             f"Max drawdown:  {m.max_drawdown_pct:.2f}%",
             f"Sharpe-like:   {m.sharpe_ratio:.2f}",

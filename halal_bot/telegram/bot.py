@@ -44,6 +44,7 @@ def default_status_fn() -> str:
     give a real readability upgrade without that risk.
     """
     from halal_bot.broker.alpaca_client import AlpacaClient
+    from halal_bot.dashboard.data import total_pnl_line
     from halal_bot.risk.rules import effective_position_cap
 
     account = AlpacaClient().get_account_snapshot()
@@ -54,6 +55,11 @@ def default_status_fn() -> str:
         "",
         f"💰 Equity:  ${account.equity:,.2f}",
         f"💵 Cash:    ${account.cash:,.2f}",
+    ]
+    pnl_line = total_pnl_line(account.equity)
+    if pnl_line:
+        lines.append(pnl_line)
+    lines += [
         f"{'⏸️ Paused:  YES' if state.trading_paused else '▶️ Paused:  no'}",
         "",
         f"📈 Positions ({len(account.positions)}/{effective_position_cap(account.equity)})",
