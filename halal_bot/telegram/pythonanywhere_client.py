@@ -4,12 +4,11 @@ so a `git pull` deploy can be picked up without going to the PythonAnywhere
 dashboard. A long-running Always-on Task process doesn't reload its own
 already-imported Python modules on its own; it has to actually be restarted.
 
-STATUS: implemented against PythonAnywhere's documented API shape
-(https://www.pythonanywhere.com/api/v0/, /user/<user>/always_on_tasks/) but
-NOT verified against a real account/token from here -- there's no way to
-test this without real PythonAnywhere credentials, which this session
-doesn't have. Treat /restart as untested until you've tried it once and
-confirmed the reply matches what actually happened on the Tasks page.
+STATUS: routes are /api/v0/user/<user>/always_on/ and .../always_on/<id>/restart/
+(per help.pythonanywhere.com/pages/API; an unauthenticated probe gives 401 on
+always_on/ and 404 on the earlier always_on_tasks/ guess, which a real /restart
+run also hit). The authenticated list+restart flow itself is still unconfirmed
+-- check the reply against what actually happened on the Tasks page.
 """
 from __future__ import annotations
 
@@ -53,7 +52,7 @@ class PythonAnywhereClient:
         )
 
     def list_always_on_tasks(self) -> list[AlwaysOnTask]:
-        resp = self._http.get(f"/api/v0/user/{self._username}/always_on_tasks/")
+        resp = self._http.get(f"/api/v0/user/{self._username}/always_on/")
         resp.raise_for_status()
         return [
             AlwaysOnTask(
@@ -64,7 +63,7 @@ class PythonAnywhereClient:
         ]
 
     def restart_task(self, task_id: int) -> None:
-        resp = self._http.post(f"/api/v0/user/{self._username}/always_on_tasks/{task_id}/restart/")
+        resp = self._http.post(f"/api/v0/user/{self._username}/always_on/{task_id}/restart/")
         resp.raise_for_status()
 
     def restart_task_matching(self, command_substring: str) -> AlwaysOnTask:
