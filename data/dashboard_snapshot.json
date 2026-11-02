@@ -1,31 +1,31 @@
 {
-  "equity": 296.36,
+  "equity": 297.96,
   "cash": 24.95,
   "holdings": {
     "CSX": {
       "qty": 1.1384,
       "avg_entry_price": 52.24,
-      "market_value": 59.185416
+      "market_value": 59.060192
     },
     "ECL": {
       "qty": 0.201752,
       "avg_entry_price": 287.35,
-      "market_value": 61.126821
+      "market_value": 62.216282
     },
     "HLAL": {
       "qty": 0.624319,
       "avg_entry_price": 72.322,
-      "market_value": 44.651295
+      "market_value": 43.97703
     },
     "MA": {
       "qty": 0.096302,
       "avg_entry_price": 605.97,
-      "market_value": 61.441639
+      "market_value": 63.376346
     },
     "SPUS": {
       "qty": 0.770303,
       "avg_entry_price": 58.588,
-      "market_value": 45.001101
+      "market_value": 44.377156
     }
   },
   "equity_history": [
@@ -526,6 +526,18 @@
       "date": "2026-11-01",
       "equity": 296.36,
       "cash": 24.95
+    },
+    {
+      "timestamp": "2026-11-02T16:10:03.662690+00:00",
+      "date": "2026-11-02",
+      "equity": 299.32,
+      "cash": 24.95
+    },
+    {
+      "timestamp": "2026-11-02T21:30:49.749963+00:00",
+      "date": "2026-11-02",
+      "equity": 297.96,
+      "cash": 24.95
     }
   ],
   "trades": [
@@ -839,10 +851,6 @@
     }
   ],
   "spy_history": [
-    {
-      "date": "2025-10-31",
-      "close": 674.78
-    },
     {
       "date": "2025-11-03",
       "close": 676.0464
@@ -1842,6 +1850,10 @@
     {
       "date": "2026-10-30",
       "close": 755.72
+    },
+    {
+      "date": "2026-11-02",
+      "close": 752.1
     }
   ]
 }
